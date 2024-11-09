@@ -1,2 +1,2 @@
-# Hermit
-A simple shell written in rust.
+# Hermit 🦀
+Shell written in rust
