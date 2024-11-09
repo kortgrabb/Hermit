@@ -45,13 +45,17 @@ impl ExternalCommand {
                 command.stdin(prev_pipe);
             }
 
-            // If we are last, we want to inherit the parent's stdout
+            /*
+            If we are not last, we want to print to stdout
+            instead of the terminal.
+             */
             if !is_last {
                 let (reader, writer) = pipe()?;
                 command.stdout(writer);
                 previous_pipe = Some(reader);
             }
 
+            // Execute the command
             let child = command.spawn()?;
             processes.push(child);
         }

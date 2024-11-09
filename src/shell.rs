@@ -1,4 +1,3 @@
-use colored::*;
 use std::{
     env,
     error::Error,
@@ -7,27 +6,20 @@ use std::{
 };
 
 use crate::{builtin::BuiltinCommand, external::ExternalCommand};
+use colored::Colorize;
 
 #[derive(Debug)]
 pub struct Shell {
     current_dir: PathBuf,
+    // TODO: save to file
     history: Vec<String>,
-    username: String,
-    hostname: String,
 }
 
 impl Shell {
     pub fn new() -> Result<Self, Box<dyn Error>> {
-        let username = env::var("USER").unwrap_or_else(|_| "unknown".to_string());
-        let hostname = hostname::get()
-            .map(|h| h.to_string_lossy().to_string())
-            .unwrap_or_else(|_| "unknown".to_string());
-
         Ok(Shell {
             current_dir: env::current_dir()?,
             history: Vec::new(),
-            username,
-            hostname,
         })
     }
 
@@ -47,24 +39,18 @@ impl Shell {
 
                 self.history.push(format!("{} {}", command, args.join(" ")));
                 self.execute(command, args)?;
+
+                // Update current directory
+                self.current_dir = env::current_dir()?;
             }
         }
     }
 
+    // TODO: colored, git integration
     fn display_prompt(&self) {
-        let dir_display = self
-            .current_dir
-            .to_string_lossy()
-            .replace(&env::var("HOME").unwrap_or_default(), "~");
+        let current_dir = self.current_dir.to_string_lossy();
 
-        print!(
-            "{}{}{}:{}$ ",
-            self.username.green().bold(),
-            "@".white(),
-            self.hostname.blue().bold(),
-            dir_display.yellow()
-        );
-
+        print!("{}{}{} ", "🦀 ".green(), current_dir, " > ".green());
         io::stdout().flush().unwrap();
     }
 
@@ -93,13 +79,13 @@ impl Shell {
         // Check if command contains pipes
         let pipeline: Vec<(&str, Vec<&str>)> = self.parse_pipeline(command, args);
 
+        // If we have a piped command
         if pipeline.len() > 1 {
             let external = ExternalCommand::new(self.current_dir.clone());
             external.execute_pipeline(&pipeline)?;
             return Ok(());
         }
 
-        // Original single command execution
         match self.execute_builtin(command, args) {
             Ok(true) => Ok(()),
             Ok(false) => self.execute_external(command, args),
