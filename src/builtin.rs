@@ -2,7 +2,8 @@ use std::{collections::HashMap, error::Error, path::PathBuf};
 
 use crate::{
     command::Command,
-    commands::{ChangeDirectory, Echo, History},
+    commands::{ChangeDirectory, Echo, History, ListDirectory},
+    flags::Flags,
 };
 
 pub struct BuiltinCommand {
@@ -13,16 +14,20 @@ pub struct BuiltinCommand {
 
 impl BuiltinCommand {
     pub fn new(current_dir: PathBuf, history: Vec<String>) -> Self {
-        let mut commands = HashMap::new();
-        commands.insert("echo", Box::new(Echo) as Box<dyn Command>);
-        commands.insert("cd", Box::new(ChangeDirectory) as Box<dyn Command>);
-        commands.insert(
-            "history",
-            Box::new(History::new(&history)) as Box<dyn Command>,
-        );
+        let commands: Vec<Box<dyn Command>> = vec![
+            Box::new(Echo),
+            Box::new(ChangeDirectory),
+            Box::new(History::new(&history)),
+            Box::new(ListDirectory::new()),
+        ];
+
+        let mut command_map = HashMap::new();
+        for cmd in commands {
+            command_map.insert(cmd.name(), cmd);
+        }
 
         Self {
-            commands,
+            commands: command_map,
             current_dir,
             history,
         }
@@ -30,10 +35,24 @@ impl BuiltinCommand {
 
     pub fn execute(&mut self, command: &str, args: &[&str]) -> Result<bool, Box<dyn Error>> {
         if let Some(cmd) = self.commands.get(command) {
-            cmd.execute(args)?;
+            let flags = Flags::new(args);
+            cmd.execute(args, &flags)?;
             Ok(true)
         } else {
             Ok(false)
+        }
+    }
+
+    pub fn print_command_help(&self, command: &str) {
+        if let Some(cmd) = self.commands.get(command) {
+            println!("{} - {}", cmd.name(), cmd.description());
+            println!("{}", cmd.extended_description());
+        }
+    }
+
+    pub fn print_all_help(&self) {
+        for cmd in self.commands.values() {
+            println!("{} - {}", cmd.name(), cmd.description());
         }
     }
 }

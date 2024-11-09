@@ -1,6 +1,6 @@
 use os_pipe::pipe;
 use std::{
-    error::Error,
+    io,
     path::PathBuf,
     process::{Command, Stdio},
 };
@@ -14,7 +14,7 @@ impl ExternalCommand {
         Self { current_dir }
     }
 
-    pub fn execute(&self, command: &str, args: &[&str]) -> Result<(), Box<dyn Error>> {
+    pub fn execute(&self, command: &str, args: &[&str]) -> io::Result<()> {
         let mut child = Command::new(command)
             .args(args)
             .current_dir(&self.current_dir)
@@ -23,13 +23,16 @@ impl ExternalCommand {
         let status = child.wait()?;
 
         if !status.success() {
-            return Err(format!("Command exited with status: {}", status).into());
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("Command exited with status: {}", status),
+            ));
         }
 
         Ok(())
     }
 
-    pub fn execute_pipeline(&self, pipeline: &[(&str, Vec<&str>)]) -> Result<(), Box<dyn Error>> {
+    pub fn execute_pipeline(&self, pipeline: &[(&str, Vec<&str>)]) -> io::Result<()> {
         let mut processes = Vec::new();
         let mut previous_pipe = None;
 
@@ -64,7 +67,10 @@ impl ExternalCommand {
         for mut process in processes {
             let status = process.wait()?;
             if !status.success() {
-                return Err(format!("Pipeline command exited with status: {}", status).into());
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("Pipeline command exited with status: {}", status),
+                ));
             }
         }
 

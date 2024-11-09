@@ -1,4 +1,7 @@
-use crate::command::Command;
+use crate::{
+    command::Command,
+    flags::{self, Flags},
+};
 use std::error::Error;
 
 pub struct History {
@@ -26,7 +29,7 @@ impl Command for History {
         "Prints the history of commands"
     }
 
-    fn execute(&self, args: &[&str]) -> Result<(), Box<dyn Error>> {
+    fn execute(&self, args: &[&str], flags: &Flags) -> Result<(), Box<dyn Error>> {
         for (i, command) in self.history.iter().enumerate() {
             println!("{}: {}", i + 1, command);
         }

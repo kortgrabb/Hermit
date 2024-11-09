@@ -1,9 +1,19 @@
-use crate::command::Command;
+use crate::{command::Command, flags::Flags};
 use std::{env, error::Error};
 
+#[derive(Clone)]
 pub struct ChangeDirectory;
 
 impl Command for ChangeDirectory {
+    fn execute(&self, args: &[&str], _flags: &Flags) -> Result<(), Box<dyn Error>> {
+        let new_dir = args.first().map_or_else(
+            || Ok::<String, Box<dyn Error>>(env::var("HOME")?),
+            |path| Ok::<String, Box<dyn Error>>(path.to_string()),
+        )?;
+        env::set_current_dir(new_dir)?;
+        Ok(())
+    }
+
     fn name(&self) -> &'static str {
         "cd"
     }
@@ -14,17 +24,5 @@ impl Command for ChangeDirectory {
 
     fn extended_description(&self) -> &'static str {
         "Change the current working directory. If no directory is specified, change to the user's home directory."
-    }
-
-    fn execute(&self, args: &[&str]) -> Result<(), Box<dyn Error>> {
-        let path = if args.is_empty() {
-            dirs::home_dir().ok_or("Could not determine home directory")?
-        } else {
-            std::path::PathBuf::from(args[0])
-        };
-
-        env::set_current_dir(path)?;
-
-        Ok(())
     }
 }

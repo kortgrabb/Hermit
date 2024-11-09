@@ -7,6 +7,7 @@ use std::{
 
 use crate::{builtin::BuiltinCommand, external::ExternalCommand};
 use colored::Colorize;
+use os_release::OsRelease;
 
 #[derive(Debug)]
 pub struct Shell {
@@ -38,8 +39,22 @@ impl Shell {
                 let args = &parts[1..];
 
                 self.history.push(format!("{} {}", command, args.join(" ")));
-                self.execute(command, args)?;
 
+                match command.to_lowercase().as_str() {
+                    "help" => {
+                        if args.is_empty() {
+                            self.print_help();
+                        } else {
+                            self.print_command_help(args[0]);
+                        }
+                    }
+                    "exit" => {
+                        return Ok(());
+                    }
+                    _ => {
+                        self.execute(command, args)?;
+                    }
+                }
                 // Update current directory
                 self.current_dir = env::current_dir()?;
             }
@@ -48,10 +63,18 @@ impl Shell {
 
     // TODO: colored, git integration
     fn display_prompt(&self) {
-        let current_dir = self.current_dir.to_string_lossy();
+        let username = env::var("USER").unwrap_or_else(|_| String::from("user"));
+        let distro = OsRelease::new()
+            .map(|os| os.name)
+            .unwrap_or_else(|_| String::from("unknown"));
 
-        print!("{}{}{} ", "🦀 ".green(), current_dir, " > ".green());
-        io::stdout().flush().unwrap();
+        print!(
+            "{}@{} {}$ ",
+            username.bright_green(),
+            distro.green(),
+            self.current_dir.display().to_string().bright_blue()
+        );
+        io::stdout().flush().unwrap_or_default();
     }
 
     fn read_input(&self) -> Vec<String> {
@@ -86,9 +109,13 @@ impl Shell {
             return Ok(());
         }
 
+        // Execute without pipes
         match self.execute_builtin(command, args) {
             Ok(true) => Ok(()),
-            Ok(false) => self.execute_external(command, args),
+            Ok(false) => match self.execute_external(command, args) {
+                Ok(_) => Ok(()),
+                Err(e) => Err(e),
+            },
             Err(e) => Err(e),
         }
     }
@@ -132,11 +159,28 @@ impl Shell {
         builtin.execute(command, args)
     }
 
+    fn print_help(&self) {
+        let builtin = BuiltinCommand::new(PathBuf::new(), Vec::new());
+        builtin.print_all_help();
+    }
+
+    fn print_command_help(&self, command: &str) {
+        let builtin = BuiltinCommand::new(self.current_dir.clone(), self.history.clone());
+        builtin.print_command_help(command);
+    }
+
     fn execute_external(&self, command: &str, args: &[&str]) -> Result<(), Box<dyn Error>> {
         let external = ExternalCommand::new(self.current_dir.clone());
-        external.execute(command, args)
+        match external.execute(command, args) {
+            Ok(_) => Ok(()),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                Err(format!("command not found: {}", command).into())
+            }
+            Err(e) => Err(e.into()),
+        }
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;

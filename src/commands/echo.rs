@@ -1,4 +1,4 @@
-use crate::command::Command;
+use crate::{command::Command, flags::Flags};
 use std::error::Error;
 
 pub struct Echo;
@@ -16,7 +16,7 @@ impl Command for Echo {
         "Prints the given arguments"
     }
 
-    fn execute(&self, args: &[&str]) -> Result<(), Box<dyn Error>> {
+    fn execute(&self, args: &[&str], _flags: &Flags) -> Result<(), Box<dyn Error>> {
         println!("{}", args.join(" "));
         Ok(())
     }
