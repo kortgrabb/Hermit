@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+dirs = "5.0.1"
 rustyline = "14.0.0"
 tempfile = "3.14.0"
