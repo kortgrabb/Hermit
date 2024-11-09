@@ -1,3 +1,4 @@
+use colored::*;
 use std::{
     env,
     error::Error,
@@ -10,15 +11,23 @@ use crate::{builtin::BuiltinCommand, external::ExternalCommand};
 #[derive(Debug)]
 pub struct Shell {
     current_dir: PathBuf,
-    // TODO: save to file
     history: Vec<String>,
+    username: String,
+    hostname: String,
 }
 
 impl Shell {
     pub fn new() -> Result<Self, Box<dyn Error>> {
+        let username = env::var("USER").unwrap_or_else(|_| "unknown".to_string());
+        let hostname = hostname::get()
+            .map(|h| h.to_string_lossy().to_string())
+            .unwrap_or_else(|_| "unknown".to_string());
+
         Ok(Shell {
             current_dir: env::current_dir()?,
             history: Vec::new(),
+            username,
+            hostname,
         })
     }
 
@@ -42,9 +51,20 @@ impl Shell {
         }
     }
 
-    // TODO: colored
     fn display_prompt(&self) {
-        print!("{}$ ", self.current_dir.display());
+        let dir_display = self
+            .current_dir
+            .to_string_lossy()
+            .replace(&env::var("HOME").unwrap_or_default(), "~");
+
+        print!(
+            "{}{}{}:{}$ ",
+            self.username.green().bold(),
+            "@".white(),
+            self.hostname.blue().bold(),
+            dir_display.yellow()
+        );
+
         io::stdout().flush().unwrap();
     }
 
@@ -61,7 +81,7 @@ impl Shell {
             None => "",
         };
 
-        // split into multiple commands with ;
+        // split into multiple commands with ; first, then handle each separately
         let transformed = transformed.split(';');
         transformed
             .map(|cmd| cmd.trim().to_string())
@@ -70,14 +90,55 @@ impl Shell {
     }
 
     fn execute(&mut self, command: &str, args: &[&str]) -> Result<(), Box<dyn Error>> {
+        // Check if command contains pipes
+        let pipeline: Vec<(&str, Vec<&str>)> = self.parse_pipeline(command, args);
+
+        if pipeline.len() > 1 {
+            let external = ExternalCommand::new(self.current_dir.clone());
+            external.execute_pipeline(&pipeline)?;
+            return Ok(());
+        }
+
+        // Original single command execution
         match self.execute_builtin(command, args) {
             Ok(true) => Ok(()),
-            Ok(false) => match self.execute_external(command, args) {
-                Ok(_) => Ok(()),
-                Err(e) => Err(e),
-            },
+            Ok(false) => self.execute_external(command, args),
             Err(e) => Err(e),
         }
+    }
+
+    fn parse_pipeline<'a>(
+        &self,
+        command: &'a str,
+        args: &'a [&'a str],
+    ) -> Vec<(&'a str, Vec<&'a str>)> {
+        let mut pipeline = Vec::new();
+        let mut current_command = Vec::new();
+        current_command.push(command);
+        current_command.extend(args);
+
+        let mut result = Vec::new();
+
+        for arg in current_command {
+            if arg == "|" {
+                if !result.is_empty() {
+                    let cmd = result[0];
+                    let args = result[1..].to_vec();
+                    pipeline.push((cmd, args));
+                    result.clear();
+                }
+            } else {
+                result.push(arg);
+            }
+        }
+
+        if !result.is_empty() {
+            let cmd = result[0];
+            let args = result[1..].to_vec();
+            pipeline.push((cmd, args));
+        }
+
+        pipeline
     }
 
     fn execute_builtin(&mut self, command: &str, args: &[&str]) -> Result<bool, Box<dyn Error>> {

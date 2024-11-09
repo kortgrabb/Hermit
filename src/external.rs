@@ -1,4 +1,9 @@
-use std::{error::Error, path::PathBuf, process::Command};
+use os_pipe::pipe;
+use std::{
+    error::Error,
+    path::PathBuf,
+    process::{Command, Stdio},
+};
 
 pub struct ExternalCommand {
     pub current_dir: PathBuf,
@@ -19,6 +24,44 @@ impl ExternalCommand {
 
         if !status.success() {
             return Err(format!("Command exited with status: {}", status).into());
+        }
+
+        Ok(())
+    }
+
+    pub fn execute_pipeline(&self, pipeline: &[(&str, Vec<&str>)]) -> Result<(), Box<dyn Error>> {
+        let mut processes = Vec::new();
+        let mut previous_pipe = None;
+
+        // Go through each command in the pipeline
+        for (i, (cmd, args)) in pipeline.iter().enumerate() {
+            let is_last = i == pipeline.len() - 1;
+            let mut command = Command::new(cmd);
+            command.args(args);
+            command.current_dir(&self.current_dir);
+
+            // Set up stdin from previous pipe if it exists
+            if let Some(prev_pipe) = previous_pipe.take() {
+                command.stdin(prev_pipe);
+            }
+
+            // If we are last, we want to inherit the parent's stdout
+            if !is_last {
+                let (reader, writer) = pipe()?;
+                command.stdout(writer);
+                previous_pipe = Some(reader);
+            }
+
+            let child = command.spawn()?;
+            processes.push(child);
+        }
+
+        // Wait for all processes to complete
+        for mut process in processes {
+            let status = process.wait()?;
+            if !status.success() {
+                return Err(format!("Pipeline command exited with status: {}", status).into());
+            }
         }
 
         Ok(())
