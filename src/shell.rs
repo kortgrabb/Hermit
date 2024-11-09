@@ -10,6 +10,7 @@ use crate::{builtin::BuiltinCommand, external::ExternalCommand};
 #[derive(Debug)]
 pub struct Shell {
     current_dir: PathBuf,
+    // TODO: save to file
     history: Vec<String>,
 }
 
@@ -41,6 +42,7 @@ impl Shell {
         }
     }
 
+    // TODO: colored
     fn display_prompt(&self) {
         print!("{}$ ", self.current_dir.display());
         io::stdout().flush().unwrap();
