@@ -32,10 +32,10 @@ impl GitInfo {
                 }
 
                 if modified > 0 {
-                    status.push(format!("{}⚡", modified));
+                    status.push(format!("!{}", modified));
                 }
                 if staged > 0 {
-                    status.push(format!("{}✓", staged));
+                    status.push(format!("{}+", staged));
                 }
                 if untracked > 0 {
                     status.push(format!("{}?", untracked));
