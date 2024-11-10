@@ -18,9 +18,15 @@ pub struct Shell {
 }
 
 impl Shell {
+    fn get_history_file_path() -> PathBuf {
+        let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        PathBuf::from(home).join(".hermit_history")
+    }
+
     pub fn new() -> Result<Self, Box<dyn Error>> {
         let mut editor = Editor::new()?;
-        let _ = editor.load_history("history.txt");
+        let history_path = Self::get_history_file_path();
+        let _ = editor.load_history(&history_path);
 
         Ok(Shell {
             current_dir: env::current_dir()?,
@@ -44,7 +50,8 @@ impl Shell {
 
                 match command.to_string().as_str() {
                     "exit" => {
-                        self.editor.save_history("history.txt").unwrap();
+                        let history_path = Self::get_history_file_path();
+                        self.editor.save_history(&history_path).unwrap();
                         return Ok(());
                     }
                     _ => match self.execute(command, args) {
@@ -228,8 +235,8 @@ mod tests {
         let shell = Shell::new().unwrap();
         assert_eq!(shell.current_dir, env::current_dir().unwrap());
 
-        // Check if history file is created
-        assert!(PathBuf::from("history.txt").exists());
+        // Check if history file is created in the right location
+        assert!(Shell::get_history_file_path().exists());
     }
 
     // Stoopid test but whatever
