@@ -1,3 +1,4 @@
+use rustyline::{error::ReadlineError, history::FileHistory};
 use std::{
     env,
     error::Error,
@@ -8,19 +9,22 @@ use std::{
 use crate::{builtin::BuiltinCommand, external::ExternalCommand};
 use colored::Colorize;
 use os_release::OsRelease;
+use rustyline::Editor;
 
 #[derive(Debug)]
 pub struct Shell {
     current_dir: PathBuf,
-    // TODO: save to file
-    history: Vec<String>,
+    editor: Editor<(), FileHistory>,
 }
 
 impl Shell {
     pub fn new() -> Result<Self, Box<dyn Error>> {
+        let mut editor = Editor::new()?;
+        let _ = editor.load_history("history.txt");
+
         Ok(Shell {
             current_dir: env::current_dir()?,
-            history: Vec::new(),
+            editor,
         })
     }
 
@@ -38,17 +42,9 @@ impl Shell {
                 let command = parts.first().unwrap();
                 let args = &parts[1..];
 
-                self.history.push(format!("{} {}", command, args.join(" ")));
-
-                match command.to_lowercase().as_str() {
-                    "help" => {
-                        if args.is_empty() {
-                            self.print_help();
-                        } else {
-                            self.print_command_help(args[0]);
-                        }
-                    }
+                match command.to_string().as_str() {
                     "exit" => {
+                        self.editor.save_history("history.txt").unwrap();
                         return Ok(());
                     }
                     _ => match self.execute(command, args) {
@@ -56,6 +52,7 @@ impl Shell {
                         Err(e) => eprintln!("{}", e),
                     },
                 }
+
                 // Update current directory
                 self.current_dir = env::current_dir()?;
             }
@@ -81,11 +78,41 @@ impl Shell {
         io::stdout().flush().unwrap_or_default();
     }
 
-    fn read_input(&self) -> Vec<String> {
-        let mut input = String::new();
-        io::stdin().read_line(&mut input).unwrap();
+    fn read_input(&mut self) -> Vec<String> {
+        match self.editor.readline(&self.get_prompt()) {
+            Ok(line) => {
+                self.editor.add_history_entry(&line).unwrap_or_default();
+                // Save history after each command
+                self.transform_input(line)
+            }
+            Err(ReadlineError::Interrupted) => {
+                // Ctrl-C
+                vec![]
+            }
+            Err(ReadlineError::Eof) => {
+                // Ctrl-D
+                std::process::exit(0);
+            }
+            Err(_) => vec![],
+        }
+    }
 
-        self.transform_input(input)
+    // Helper method to generate prompt string
+    fn get_prompt(&self) -> String {
+        let username = env::var("USER").unwrap_or_else(|_| String::from("user"));
+        let distro = OsRelease::new()
+            .map(|os| os.name)
+            .unwrap_or_else(|_| String::from("unknown"));
+
+        let current_dir = self.current_dir.display().to_string();
+        let current_dir = current_dir.replace(env::var("HOME").unwrap_or_default().as_str(), "~");
+
+        format!(
+            "{}@{} {}$ ",
+            username.bright_green(),
+            distro.green(),
+            current_dir.bright_blue()
+        )
     }
 
     fn transform_input(&self, input: String) -> Vec<String> {
@@ -113,15 +140,59 @@ impl Shell {
             return Ok(());
         }
 
+        // Check if command contains redirects
+        let (command, args, redirect) = self.parse_redirects(command, args)?;
+
+        // If we have a redirect
+        if let Some(redirect) = redirect {
+            let external = ExternalCommand::new(self.current_dir.clone());
+            external.execute_redirect(command, &args, redirect)?;
+            return Ok(());
+        }
+
         // Execute without pipes
-        match self.execute_builtin(command, args) {
+        match self.execute_builtin(command, &args) {
             Ok(true) => Ok(()),
-            Ok(false) => match self.execute_external(command, args) {
+            Ok(false) => match self.execute_external(command, &args) {
                 Ok(_) => Ok(()),
                 Err(e) => Err(e),
             },
             Err(e) => Err(e),
         }
+    }
+
+    fn parse_redirects<'a>(
+        &self,
+        command: &'a str,
+        args: &'a [&'a str],
+    ) -> Result<(&'a str, Vec<&'a str>, Option<&'a str>), &'static str> {
+        let mut command = command;
+        let mut args_vec = args.to_vec();
+        let mut redirect = None;
+
+        if let Some(index) = args.iter().position(|&x| x == ">") {
+            // Handle case where > is first argument
+            if index == 0 {
+                // Keep original command, empty args, set redirect
+                args_vec.clear();
+                redirect = args.get(1);
+            } else {
+                // Normal case: command is arg before >, args are before that
+                command = args[index - 1];
+                args_vec = args[..index - 1].to_vec();
+                redirect = args.get(index + 1);
+            }
+
+            if redirect.is_none() {
+                return Err("missing redirect file");
+            }
+        }
+
+        if redirect.is_none() {
+            return Ok((command, args_vec, None));
+        }
+
+        Ok((command, args_vec, redirect.map(|v| &**v)))
     }
 
     fn parse_pipeline<'a>(
@@ -159,18 +230,8 @@ impl Shell {
     }
 
     fn execute_builtin(&mut self, command: &str, args: &[&str]) -> Result<bool, Box<dyn Error>> {
-        let mut builtin = BuiltinCommand::new(self.current_dir.clone(), self.history.clone());
+        let mut builtin = BuiltinCommand::new(self.current_dir.clone(), self.editor.history());
         builtin.execute(command, args)
-    }
-
-    fn print_help(&self) {
-        let builtin = BuiltinCommand::new(PathBuf::new(), Vec::new());
-        builtin.print_all_help();
-    }
-
-    fn print_command_help(&self, command: &str) {
-        let builtin = BuiltinCommand::new(self.current_dir.clone(), self.history.clone());
-        builtin.print_command_help(command);
     }
 
     fn execute_external(&self, command: &str, args: &[&str]) -> Result<(), Box<dyn Error>> {
@@ -187,23 +248,29 @@ impl Shell {
 
 #[cfg(test)]
 mod tests {
+    use rustyline::history::History;
+
     use super::*;
 
     #[test]
     fn test_shell_new() {
         let shell = Shell::new().unwrap();
         assert_eq!(shell.current_dir, env::current_dir().unwrap());
-        assert!(shell.history.is_empty());
+
+        // Check if history file is created
+        assert!(PathBuf::from("history.txt").exists());
     }
 
     // Stoopid test but whatever
     #[test]
     fn test_shell_history() {
         let mut shell = Shell::new().unwrap();
-        assert!(shell.history.is_empty());
+        shell.editor.add_history_entry("echo hello");
+        assert_eq!(shell.editor.history().len(), 1);
 
-        shell.history.push("test".to_string());
-        assert_eq!(shell.history, vec!["test"]);
+        shell.editor.clear_history();
+
+        assert_eq!(shell.editor.history().len(), 0);
     }
 
     #[test]

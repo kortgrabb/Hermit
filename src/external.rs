@@ -76,6 +76,31 @@ impl ExternalCommand {
 
         Ok(())
     }
+
+    pub fn execute_redirect(&self, command: &str, args: &[&str], redirect: &str) -> io::Result<()> {
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(redirect)?;
+
+        let mut child = Command::new(command)
+            .args(args)
+            .current_dir(&self.current_dir)
+            .stdout(file)
+            .spawn()?;
+
+        let status = child.wait()?;
+
+        if !status.success() {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("Command exited with status: {}", status),
+            ));
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

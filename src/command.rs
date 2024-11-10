@@ -1,7 +1,6 @@
 use crate::flags::Flags;
 use std::error::Error;
 
-#[derive(Clone)]
 pub struct CommandContext {
     pub history: Vec<String>,
     pub builtins: Vec<&'static str>,

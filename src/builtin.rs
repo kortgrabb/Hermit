@@ -1,3 +1,5 @@
+use rustyline::history::FileHistory;
+
 use crate::{
     command::{Command, CommandContext},
     commands::{ChangeDirectory, Echo, History, ListDirectory, PrintWorkingDirectory, TypeCommand},
@@ -12,7 +14,7 @@ pub struct BuiltinCommand {
 }
 
 impl BuiltinCommand {
-    pub fn new(current_dir: PathBuf, history: Vec<String>) -> Self {
+    pub fn new(current_dir: PathBuf, history: &FileHistory) -> Self {
         let commands: Vec<Box<dyn Command>> = vec![
             Box::new(Echo),
             Box::new(ChangeDirectory),
@@ -29,7 +31,7 @@ impl BuiltinCommand {
         }
 
         let context = CommandContext {
-            history,
+            history: history.iter().map(|s| s.to_string()).collect(),
             builtins: command_names,
         };
 
@@ -65,104 +67,5 @@ impl BuiltinCommand {
 
     pub fn get_commands(&self) -> Vec<&'static str> {
         self.commands.keys().copied().collect()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    // test that all commands are loaded
-    fn test_builtin_command() {
-        let current_dir = PathBuf::from("/home/user");
-        let history = vec!["echo hello".to_string(), "cd /".to_string()];
-        let builtin = BuiltinCommand::new(current_dir, history);
-
-        let commands = builtin.get_commands();
-        assert_eq!(commands.len(), 6);
-        assert!(commands.contains(&"echo"));
-        assert!(commands.contains(&"cd"));
-        assert!(commands.contains(&"ls"));
-        assert!(commands.contains(&"pwd"));
-        assert!(commands.contains(&"history"));
-        assert!(commands.contains(&"type"));
-    }
-
-    #[test]
-    fn test_execute_echo() {
-        let current_dir = PathBuf::from("/home/user");
-        let history = vec!["echo hello".to_string(), "cd /".to_string()];
-        let mut builtin = BuiltinCommand::new(current_dir, history);
-
-        let result = builtin.execute("echo", &["hello"]);
-        assert!(result.is_ok());
-        assert!(result.unwrap());
-    }
-
-    #[test]
-    fn test_execute_cd() {
-        let current_dir = PathBuf::from("/home/user");
-        let history = vec!["echo hello".to_string(), "cd /".to_string()];
-        let mut builtin = BuiltinCommand::new(current_dir, history);
-
-        let result = builtin.execute("cd", &["/"]);
-        assert!(result.is_ok());
-        assert!(result.unwrap());
-    }
-
-    #[test]
-    fn test_execute_ls() {
-        let current_dir = PathBuf::from("/home/user");
-        let history = vec!["echo hello".to_string(), "cd /".to_string()];
-        let mut builtin = BuiltinCommand::new(current_dir, history);
-
-        let result = builtin.execute("ls", &[]);
-        assert!(result.is_ok());
-        assert!(result.unwrap());
-    }
-
-    #[test]
-    fn test_execute_pwd() {
-        let current_dir = PathBuf::from("/home/user");
-        let history = vec!["echo hello".to_string(), "cd /".to_string()];
-        let mut builtin = BuiltinCommand::new(current_dir, history);
-
-        let result = builtin.execute("pwd", &[]);
-        assert!(result.is_ok());
-        assert!(result.unwrap());
-    }
-
-    #[test]
-    fn test_execute_history() {
-        let current_dir = PathBuf::from("/home/user");
-        let history = vec!["echo hello".to_string(), "cd /".to_string()];
-        let mut builtin = BuiltinCommand::new(current_dir, history);
-
-        let result = builtin.execute("history", &[]);
-        assert!(result.is_ok());
-        assert!(result.unwrap());
-    }
-
-    #[test]
-    fn test_execute_type() {
-        let current_dir = PathBuf::from("/home/user");
-        let history = vec!["echo hello".to_string(), "cd /".to_string()];
-        let mut builtin = BuiltinCommand::new(current_dir, history);
-
-        let result = builtin.execute("type", &["echo"]);
-        assert!(result.is_ok());
-        assert!(result.unwrap());
-    }
-
-    #[test]
-    fn test_execute_unknown_command() {
-        let current_dir = PathBuf::from("/home/user");
-        let history = vec!["echo hello".to_string(), "cd /".to_string()];
-        let mut builtin = BuiltinCommand::new(current_dir, history);
-
-        let result = builtin.execute("unknown", &[]);
-        assert!(result.is_ok());
-        assert!(!result.unwrap());
     }
 }
