@@ -259,9 +259,8 @@ impl Shell {
         let mut parts = Vec::new();
         let mut current_part = String::new();
         let mut in_quotes = false;
-        let mut chars = input.chars().peekable();
 
-        while let Some(c) = chars.next() {
+        for c in input.chars().peekable() {
             match c {
                 '"' => in_quotes = !in_quotes,
                 ' ' if !in_quotes => {

@@ -2,14 +2,12 @@ use std::{env, error::Error, fs, path::PathBuf};
 
 use colored::Colorize;
 
-use crate::{
-    command::Command,
-    flags::{self, Flags},
-    utils,
-};
+use crate::{command::Command, flags::Flags, utils};
 
-#[derive(Clone)]
 pub struct ListDirectory;
+
+const ENTRIES_PER_ROW: usize = 4;
+const MIN_COLUMN_WIDTH: usize = 30;
 
 impl Command for ListDirectory {
     fn name(&self) -> &'static str {
@@ -51,7 +49,6 @@ impl Command for ListDirectory {
                 };
 
                 let file_name = utils::colorize_file_name(&file_name, &metadata);
-
                 let size = metadata.len();
 
                 println!("{:6} {} {}", size, file_type, file_name);
@@ -59,14 +56,13 @@ impl Command for ListDirectory {
                 let metadata = entry.metadata()?;
                 let colored_name = utils::colorize_file_name(&file_name, &metadata);
 
-                println!("{} ", colored_name);
+                print!("{:<MIN_COLUMN_WIDTH$}", colored_name);
+                if idx % ENTRIES_PER_ROW == ENTRIES_PER_ROW - 1 {
+                    println!();
+                }
             }
 
             idx += 1;
-        }
-
-        if !show_long {
-            println!();
         }
 
         Ok(())
