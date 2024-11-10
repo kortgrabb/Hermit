@@ -48,7 +48,7 @@ impl GitInfo {
                 String::new()
             };
 
-            format!("[{} {}]", branch_name.yellow(), status_str)
+            format!("{}{}", branch_name.green(), status_str)
         } else {
             String::new()
         }
