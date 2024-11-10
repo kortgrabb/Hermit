@@ -32,18 +32,18 @@ impl GitInfo {
                 }
 
                 if modified > 0 {
-                    status.push(format!("!{}", modified));
+                    status.push(format!(" !{}", modified));
                 }
                 if staged > 0 {
-                    status.push(format!("{}+", staged));
+                    status.push(format!(" {}+", staged));
                 }
                 if untracked > 0 {
-                    status.push(format!("{}?", untracked));
+                    status.push(format!(" {}?", untracked));
                 }
             }
 
             let status_str = if !status.is_empty() {
-                status.join(" ").red().to_string()
+                status.join("").red().to_string()
             } else {
                 String::new()
             };
