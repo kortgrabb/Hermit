@@ -42,27 +42,7 @@ impl Shell {
             }
 
             for command in input {
-                let mut parts = Vec::new();
-                let mut current_part = String::new();
-                let mut in_quotes = false;
-                let mut chars = command.chars().peekable();
-
-                while let Some(c) = chars.next() {
-                    match c {
-                        '"' => in_quotes = !in_quotes,
-                        ' ' if !in_quotes => {
-                            if !current_part.is_empty() {
-                                parts.push(current_part.clone());
-                                current_part.clear();
-                            }
-                        }
-                        _ => current_part.push(c),
-                    }
-                }
-
-                if !current_part.is_empty() {
-                    parts.push(current_part);
-                }
+                let parts = self.parse_args(&command);
 
                 let parts: Vec<&str> = parts.iter().map(|s| s.as_str()).collect();
                 let command = parts.first().unwrap();
@@ -293,6 +273,32 @@ impl Shell {
             }
             Err(e) => Err(e.into()),
         }
+    }
+
+    pub fn parse_args(&self, input: &str) -> Vec<String> {
+        let mut parts = Vec::new();
+        let mut current_part = String::new();
+        let mut in_quotes = false;
+        let mut chars = input.chars().peekable();
+
+        while let Some(c) = chars.next() {
+            match c {
+                '"' => in_quotes = !in_quotes,
+                ' ' if !in_quotes => {
+                    if !current_part.is_empty() {
+                        parts.push(current_part.clone());
+                        current_part.clear();
+                    }
+                }
+                _ => current_part.push(c),
+            }
+        }
+
+        if !current_part.is_empty() {
+            parts.push(current_part);
+        }
+
+        parts
     }
 }
 
