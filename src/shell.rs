@@ -115,25 +115,26 @@ impl Shell {
     }
 
     fn get_git_info(&self) -> String {
-        let repo = self.repo.workdir().unwrap();
-        let repo = Repository::open(repo).unwrap();
-        let head = repo.head().unwrap();
-        let head = head.shorthand().unwrap_or("HEAD");
-        let branch = head.to_string();
+        let mut info = String::new();
+        if let Ok(head) = self.repo.head() {
+            if let Some(branch_name) = head.shorthand() {
+                info.push_str(&branch_name.bright_yellow().to_string());
 
-        let status = repo.statuses(None).unwrap();
-        let mut changes = 0;
-        for _ in status.iter() {
-            changes += 1;
+                if let Ok(statuses) = self.repo.statuses(None) {
+                    let mut is_dirty = false;
+                    for status in statuses.iter() {
+                        if status.status() != git2::Status::CURRENT {
+                            is_dirty = true;
+                            break;
+                        }
+                    }
+                    if is_dirty {
+                        info.push_str("*");
+                    }
+                }
+            }
         }
-
-        let changes = if changes > 0 {
-            format!("{}*", changes)
-        } else {
-            "".to_string()
-        };
-
-        format!("{}{}", branch, changes)
+        info
     }
 
     fn transform_input(&self, input: String) -> Vec<String> {
