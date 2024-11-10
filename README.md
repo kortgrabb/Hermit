@@ -5,9 +5,11 @@ Shell written in rust.
 - Builtins
 - Execute external commands
 - Pipe commands
-
+- Redirection
+- Git integration
+- History
+- Navigation
 ## TODO
-- [x] Redirection
 - [ ] Background processes
 - [ ] Tab completion
 - [ ] Scripting
