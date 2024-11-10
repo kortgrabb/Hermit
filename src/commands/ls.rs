@@ -8,13 +8,8 @@ use crate::{
     utils,
 };
 
+#[derive(Clone)]
 pub struct ListDirectory;
-
-impl ListDirectory {
-    pub fn new() -> Self {
-        ListDirectory
-    }
-}
 
 impl Command for ListDirectory {
     fn name(&self) -> &'static str {
@@ -35,6 +30,8 @@ impl Command for ListDirectory {
         let entries = fs::read_dir(path)?;
 
         let show_hidden = flags.has_flag('a');
+        let show_long = flags.has_flag('l');
+        let mut idx = 0;
         for entry in entries {
             let entry = entry?;
             let file_name = entry.file_name();
@@ -44,11 +41,37 @@ impl Command for ListDirectory {
                 continue;
             }
 
-            if entry.file_type()?.is_dir() {
-                println!("{}", file_name.on_bright_black().white());
+            if show_long {
+                let metadata = entry.metadata()?;
+                let file_type = metadata.file_type();
+                let file_type = if file_type.is_dir() {
+                    "d".blue()
+                } else {
+                    "f".normal()
+                };
+
+                let file_name = utils::colorize_file_name(&file_name, &metadata);
+
+                let size = metadata.len();
+
+                println!("{:6} {} {}", size, file_type, file_name);
             } else {
-                println!("{}", file_name);
+                let metadata = entry.metadata()?;
+                let colored_name = utils::colorize_file_name(&file_name, &metadata);
+
+                print!("{} ", colored_name);
+
+                let width = utils::term_width();
+                if idx > 0 && idx % width == 0 {
+                    println!();
+                }
             }
+
+            idx += 1;
+        }
+
+        if !show_long {
+            println!();
         }
 
         Ok(())

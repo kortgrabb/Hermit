@@ -4,6 +4,7 @@ use crate::{
 };
 use std::error::Error;
 
+#[derive(Clone)]
 pub struct History;
 
 impl Command for History {

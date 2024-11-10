@@ -1,6 +1,6 @@
 use crate::{
     command::{Command, CommandContext},
-    commands::{ChangeDirectory, Echo, History, ListDirectory, PrintWorkingDirectory},
+    commands::{ChangeDirectory, Echo, History, ListDirectory, PrintWorkingDirectory, TypeCommand},
     flags::Flags,
 };
 use std::{collections::HashMap, error::Error, path::PathBuf};
@@ -16,20 +16,27 @@ impl BuiltinCommand {
         let commands: Vec<Box<dyn Command>> = vec![
             Box::new(Echo),
             Box::new(ChangeDirectory),
-            Box::new(ListDirectory::new()),
-            Box::new(PrintWorkingDirectory::new()),
+            Box::new(ListDirectory),
+            Box::new(PrintWorkingDirectory),
             Box::new(History),
+            Box::new(TypeCommand),
         ];
 
+        let command_names: Vec<&'static str> = commands.iter().map(|cmd| cmd.name()).collect();
         let mut command_map = HashMap::new();
         for cmd in commands {
             command_map.insert(cmd.name(), cmd);
         }
 
-        Self {
+        let context = CommandContext {
+            history,
+            builtins: command_names,
+        };
+
+        BuiltinCommand {
             commands: command_map,
             current_dir,
-            context: CommandContext { history },
+            context,
         }
     }
 

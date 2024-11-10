@@ -1,6 +1,7 @@
 use crate::{command::Command, flags::Flags};
 use std::error::Error;
 
+#[derive(Clone)]
 pub struct Echo;
 
 impl Command for Echo {

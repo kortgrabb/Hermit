@@ -2,6 +2,7 @@ use std::{env, error::Error};
 
 use crate::{command::Command, flags::Flags};
 
+#[derive(Clone)]
 pub struct PrintWorkingDirectory;
 
 impl Command for PrintWorkingDirectory {
@@ -25,11 +26,5 @@ impl Command for PrintWorkingDirectory {
 
     fn extended_description(&self) -> &'static str {
         "Print the current working directory"
-    }
-}
-
-impl PrintWorkingDirectory {
-    pub fn new() -> Self {
-        PrintWorkingDirectory
     }
 }

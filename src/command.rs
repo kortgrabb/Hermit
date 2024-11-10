@@ -4,7 +4,7 @@ use std::error::Error;
 #[derive(Clone)]
 pub struct CommandContext {
     pub history: Vec<String>,
-    // Add other shared data here as needed
+    pub builtins: Vec<&'static str>,
 }
 
 pub trait Command {
