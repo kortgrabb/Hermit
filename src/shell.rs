@@ -42,9 +42,36 @@ impl Shell {
             }
 
             for command in input {
-                let parts: Vec<&str> = command.split_whitespace().collect();
+                let mut parts = Vec::new();
+                let mut current_part = String::new();
+                let mut in_quotes = false;
+                let mut chars = command.chars().peekable();
+
+                while let Some(c) = chars.next() {
+                    match c {
+                        '"' => in_quotes = !in_quotes,
+                        ' ' if !in_quotes => {
+                            if !current_part.is_empty() {
+                                parts.push(current_part.clone());
+                                current_part.clear();
+                            }
+                        }
+                        _ => current_part.push(c),
+                    }
+                }
+
+                if !current_part.is_empty() {
+                    parts.push(current_part);
+                }
+
+                let parts: Vec<&str> = parts.iter().map(|s| s.as_str()).collect();
                 let command = parts.first().unwrap();
-                let args = &parts[1..];
+                // FIXME: change execute signature to take Vec<String> instead of Vec<&str>
+                let expanded_args: Vec<String> = parts[1..]
+                    .iter()
+                    .map(|arg| self.expand_tilde(arg))
+                    .collect();
+                let args: Vec<&str> = expanded_args.iter().map(|s| s.as_str()).collect();
 
                 match command.to_string().as_str() {
                     "exit" => {
@@ -52,7 +79,7 @@ impl Shell {
                         self.editor.save_history(&history_path).unwrap();
                         return Ok(());
                     }
-                    _ => match self.execute(command, args) {
+                    _ => match self.execute(command, &args) {
                         Ok(_) => {}
                         Err(e) => eprintln!("{}", e),
                     },
@@ -152,6 +179,9 @@ impl Shell {
         }
     }
 
+    // FIXME: Quotes are not handled properly
+    // currently: echo "hello world" -> ["echo", "\"hello", "world\""]
+    // expected: echo "hello world" -> ["echo", "hello world"]
     fn transform_input(&self, input: String) -> Vec<String> {
         let transformed = match input.split('#').next() {
             Some(cmd) => cmd.trim(),
