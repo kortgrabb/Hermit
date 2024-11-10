@@ -59,12 +59,7 @@ impl Command for ListDirectory {
                 let metadata = entry.metadata()?;
                 let colored_name = utils::colorize_file_name(&file_name, &metadata);
 
-                print!("{} ", colored_name);
-
-                let width = utils::term_width();
-                if idx > 0 && idx % width == 0 {
-                    println!();
-                }
+                println!("{} ", colored_name);
             }
 
             idx += 1;

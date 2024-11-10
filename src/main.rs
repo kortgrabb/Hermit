@@ -23,7 +23,3 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
-
-fn setup_terminal() {
-    // enable cooked mode
-}

@@ -61,20 +61,8 @@ impl Shell {
 
     // TODO: colored, git integration
     fn display_prompt(&self) {
-        let username = env::var("USER").unwrap_or_else(|_| String::from("user"));
-        let distro = OsRelease::new()
-            .map(|os| os.name)
-            .unwrap_or_else(|_| String::from("unknown"));
-
-        let current_dir = self.current_dir.display().to_string();
-        let current_dir = current_dir.replace(env::var("HOME").unwrap_or_default().as_str(), "~");
-
-        print!(
-            "{}@{} {}$ ",
-            username.bright_green(),
-            distro.green(),
-            current_dir.bright_blue()
-        );
+        let prompt = self.get_prompt();
+        print!("{}", prompt);
         io::stdout().flush().unwrap_or_default();
     }
 
@@ -108,7 +96,7 @@ impl Shell {
         let current_dir = current_dir.replace(env::var("HOME").unwrap_or_default().as_str(), "~");
 
         format!(
-            "{}@{} {}$ ",
+            "{}@{} {} > ",
             username.bright_green(),
             distro.green(),
             current_dir.bright_blue()
@@ -248,10 +236,10 @@ mod tests {
     #[test]
     fn test_shell_history() {
         let mut shell = Shell::new().unwrap();
-        shell.editor.add_history_entry("echo hello");
+        let _ = shell.editor.add_history_entry("echo hello");
         assert_eq!(shell.editor.history().len(), 1);
 
-        shell.editor.clear_history();
+        let _ = shell.editor.clear_history();
 
         assert_eq!(shell.editor.history().len(), 0);
     }
