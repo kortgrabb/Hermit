@@ -77,3 +77,34 @@ impl ExternalCommand {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn test_execute() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let current_dir = tmp_dir.path().to_path_buf();
+
+        let command = ExternalCommand::new(current_dir.clone());
+        let result = command.execute("touch", &["test.txt"]);
+
+        assert!(result.is_ok());
+        assert!(current_dir.join("test.txt").exists());
+    }
+
+    #[test]
+    fn test_execute_pipeline() {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let current_dir = tmp_dir.path().to_path_buf();
+
+        let command = ExternalCommand::new(current_dir);
+        let pipeline = vec![("echo", vec!["hello"]), ("grep", vec!["hello"])];
+
+        let result = command.execute_pipeline(&pipeline);
+
+        assert!(result.is_ok());
+    }
+}

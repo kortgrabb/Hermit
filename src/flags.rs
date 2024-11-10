@@ -33,3 +33,41 @@ impl Flags {
         &self.values
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_flags() {
+        let args = vec!["-a", "-b", "value1", "-c", "value2"];
+        let flags = Flags::new(&args);
+
+        assert!(flags.has_flag('a'));
+        assert!(flags.has_flag('b'));
+
+        assert_eq!(flags.values(), &["value1", "value2"]);
+    }
+
+    #[test]
+    fn test_flags_no_values() {
+        let args = vec!["-a", "-b", "-c"];
+        let flags = Flags::new(&args);
+
+        assert!(flags.has_flag('a'));
+        assert!(flags.has_flag('b'));
+        assert!(flags.has_flag('c'));
+
+        assert_eq!(flags.values(), &[] as &[String]);
+    }
+
+    #[test]
+    fn test_compact_flags() {
+        let args = vec!["-abc"];
+        let flags = Flags::new(&args);
+
+        assert!(flags.has_flag('a'));
+        assert!(flags.has_flag('b'));
+        assert!(flags.has_flag('c'));
+    }
+}
