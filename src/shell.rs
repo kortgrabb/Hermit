@@ -1,3 +1,4 @@
+use git2::Repository;
 use rustyline::{error::ReadlineError, history::FileHistory};
 use std::{
     env,
@@ -11,10 +12,10 @@ use colored::Colorize;
 use os_release::OsRelease;
 use rustyline::Editor;
 
-#[derive(Debug)]
 pub struct Shell {
     current_dir: PathBuf,
     editor: Editor<(), FileHistory>,
+    repo: Repository,
 }
 
 impl Shell {
@@ -27,10 +28,12 @@ impl Shell {
         let mut editor = Editor::new()?;
         let history_path = Self::get_history_file_path();
         let _ = editor.load_history(&history_path);
+        let repo = Repository::open(".")?;
 
         Ok(Shell {
             current_dir: env::current_dir()?,
             editor,
+            repo,
         })
     }
 
@@ -103,11 +106,34 @@ impl Shell {
         let current_dir = current_dir.replace(env::var("HOME").unwrap_or_default().as_str(), "~");
 
         format!(
-            "{}@{} {} > ",
+            "{}@{} {} [{}] > ",
             username.bright_green(),
             distro.green(),
-            current_dir.bright_blue()
+            current_dir.bright_blue(),
+            self.get_git_info()
         )
+    }
+
+    fn get_git_info(&self) -> String {
+        let repo = self.repo.workdir().unwrap();
+        let repo = Repository::open(repo).unwrap();
+        let head = repo.head().unwrap();
+        let head = head.shorthand().unwrap_or("HEAD");
+        let branch = head.to_string();
+
+        let status = repo.statuses(None).unwrap();
+        let mut changes = 0;
+        for _ in status.iter() {
+            changes += 1;
+        }
+
+        let changes = if changes > 0 {
+            format!("{}*", changes)
+        } else {
+            "".to_string()
+        };
+
+        format!("{}{}", branch, changes)
     }
 
     fn transform_input(&self, input: String) -> Vec<String> {
