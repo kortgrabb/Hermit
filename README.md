@@ -7,7 +7,7 @@ Shell written in rust.
 - Pipe commands
 
 ## TODO
-- [ ] Redirection
+- [x] Redirection
 - [ ] Background processes
 - [ ] Tab completion
 - [ ] Scripting
