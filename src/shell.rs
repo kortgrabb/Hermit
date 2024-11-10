@@ -15,15 +15,10 @@ use rustyline::Editor;
 pub struct Shell {
     current_dir: PathBuf,
     editor: Editor<(), FileHistory>,
-    repo: Repository,
+    repo: Option<Repository>,
 }
 
 impl Shell {
-    fn get_history_file_path() -> PathBuf {
-        let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        PathBuf::from(home).join(".hermit_history")
-    }
-
     pub fn new() -> Result<Self, Box<dyn Error>> {
         let mut editor = Editor::new()?;
         let history_path = Self::get_history_file_path();
@@ -33,7 +28,7 @@ impl Shell {
         Ok(Shell {
             current_dir: env::current_dir()?,
             editor,
-            repo,
+            repo: Some(repo),
         })
     }
 
@@ -65,8 +60,30 @@ impl Shell {
 
                 // Update current directory
                 self.current_dir = env::current_dir()?;
+
+                // Update git repository
+                self.repo = match Repository::open(".") {
+                    Ok(repo) => Some(repo),
+                    Err(_) => None,
+                };
             }
         }
+    }
+
+    fn expand_tilde(&self, path: &str) -> String {
+        if path.starts_with("~") {
+            if let Ok(home) = env::var("HOME") {
+                // Replace only the first occurrence of ~
+                return path.replacen("~", &home, 1);
+            }
+        }
+
+        path.to_string()
+    }
+
+    fn get_history_file_path() -> PathBuf {
+        let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        PathBuf::from(home).join(".hermit_history")
     }
 
     // TODO: colored, git integration
@@ -106,7 +123,7 @@ impl Shell {
         let current_dir = current_dir.replace(env::var("HOME").unwrap_or_default().as_str(), "~");
 
         format!(
-            "{}@{} {} [{}] > ",
+            "{}@{} {} {} > ",
             username.bright_green(),
             distro.green(),
             current_dir.bright_blue(),
@@ -115,26 +132,24 @@ impl Shell {
     }
 
     fn get_git_info(&self) -> String {
-        let mut info = String::new();
-        if let Ok(head) = self.repo.head() {
-            if let Some(branch_name) = head.shorthand() {
-                info.push_str(&branch_name.bright_yellow().to_string());
+        if let Some(repo) = &self.repo {
+            let head = repo.head().ok();
+            let branch = head.as_ref().and_then(|h| h.shorthand());
 
-                if let Ok(statuses) = self.repo.statuses(None) {
-                    let mut is_dirty = false;
-                    for status in statuses.iter() {
-                        if status.status() != git2::Status::CURRENT {
-                            is_dirty = true;
-                            break;
-                        }
-                    }
-                    if is_dirty {
-                        info.push_str("*");
-                    }
+            if let Some(branch_name) = branch {
+                let mut status = String::new();
+                let statuses = repo.statuses(None).unwrap();
+                if !statuses.is_empty() {
+                    status.push('*');
                 }
+
+                format!("[{}{}]", branch_name.yellow(), status.red())
+            } else {
+                String::new()
             }
+        } else {
+            String::new()
         }
-        info
     }
 
     fn transform_input(&self, input: String) -> Vec<String> {
