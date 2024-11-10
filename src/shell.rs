@@ -9,11 +9,7 @@ use std::{
     path::PathBuf,
 };
 
-use crate::{
-    builtin::BuiltinCommand,
-    external::ExternalCommand,
-    git::{self, GitInfo},
-};
+use crate::{builtin::BuiltinCommand, external::ExternalCommand, git::GitInfo};
 
 pub struct Shell {
     current_dir: PathBuf,
