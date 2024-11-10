@@ -40,7 +40,7 @@ impl Command for ListDirectory {
             }
 
             if entry.file_type()?.is_dir() {
-                println!("{}", file_name.black().bold());
+                println!("{}", file_name.on_bright_black().white());
             } else {
                 println!("{}", file_name);
             }
