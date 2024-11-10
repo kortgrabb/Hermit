@@ -51,9 +51,10 @@ impl Shell {
                     "exit" => {
                         return Ok(());
                     }
-                    _ => {
-                        self.execute(command, args)?;
-                    }
+                    _ => match self.execute(command, args) {
+                        Ok(_) => {}
+                        Err(e) => eprintln!("{}", e),
+                    },
                 }
                 // Update current directory
                 self.current_dir = env::current_dir()?;
@@ -68,11 +69,14 @@ impl Shell {
             .map(|os| os.name)
             .unwrap_or_else(|_| String::from("unknown"));
 
+        let current_dir = self.current_dir.display().to_string();
+        let current_dir = current_dir.replace(env::var("HOME").unwrap_or_default().as_str(), "~");
+
         print!(
             "{}@{} {}$ ",
             username.bright_green(),
             distro.green(),
-            self.current_dir.display().to_string().bright_blue()
+            current_dir.bright_blue()
         );
         io::stdout().flush().unwrap_or_default();
     }

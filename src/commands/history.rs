@@ -1,20 +1,10 @@
 use crate::{
-    command::Command,
-    flags::{self, Flags},
+    command::{Command, CommandContext},
+    flags::Flags,
 };
 use std::error::Error;
 
-pub struct History {
-    pub history: Vec<String>,
-}
-
-impl History {
-    pub fn new(history: &[String]) -> Self {
-        Self {
-            history: history.to_vec(),
-        }
-    }
-}
+pub struct History;
 
 impl Command for History {
     fn name(&self) -> &'static str {
@@ -22,16 +12,21 @@ impl Command for History {
     }
 
     fn description(&self) -> &'static str {
-        "Prints the history of commands"
+        "Display command history"
     }
 
     fn extended_description(&self) -> &'static str {
-        "Prints the history of commands"
+        "Display the command history with line numbers"
     }
 
-    fn execute(&self, args: &[&str], flags: &Flags) -> Result<(), Box<dyn Error>> {
-        for (i, command) in self.history.iter().enumerate() {
-            println!("{}: {}", i + 1, command);
+    fn execute(
+        &self,
+        _args: &[&str],
+        _flags: &Flags,
+        context: &CommandContext,
+    ) -> Result<(), Box<dyn Error>> {
+        for (i, cmd) in context.history.iter().enumerate() {
+            println!("{:5} {}", i + 1, cmd);
         }
         Ok(())
     }

@@ -21,7 +21,12 @@ impl Command for ListDirectory {
         "ls"
     }
 
-    fn execute(&self, args: &[&str], flags: &Flags) -> Result<(), Box<dyn Error>> {
+    fn execute(
+        &self,
+        args: &[&str],
+        flags: &Flags,
+        _context: &crate::command::CommandContext,
+    ) -> Result<(), Box<dyn Error>> {
         let path = args
             .iter()
             .find(|arg| !arg.starts_with('-'))

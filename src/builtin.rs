@@ -1,15 +1,14 @@
-use std::{collections::HashMap, error::Error, path::PathBuf};
-
 use crate::{
-    command::Command,
-    commands::{ChangeDirectory, Echo, History, ListDirectory},
+    command::{Command, CommandContext},
+    commands::{ChangeDirectory, Echo, History, ListDirectory, PrintWorkingDirectory},
     flags::Flags,
 };
+use std::{collections::HashMap, error::Error, path::PathBuf};
 
 pub struct BuiltinCommand {
     commands: HashMap<&'static str, Box<dyn Command>>,
     pub current_dir: PathBuf,
-    pub history: Vec<String>,
+    context: CommandContext,
 }
 
 impl BuiltinCommand {
@@ -17,8 +16,9 @@ impl BuiltinCommand {
         let commands: Vec<Box<dyn Command>> = vec![
             Box::new(Echo),
             Box::new(ChangeDirectory),
-            Box::new(History::new(&history)),
             Box::new(ListDirectory::new()),
+            Box::new(PrintWorkingDirectory::new()),
+            Box::new(History),
         ];
 
         let mut command_map = HashMap::new();
@@ -29,14 +29,14 @@ impl BuiltinCommand {
         Self {
             commands: command_map,
             current_dir,
-            history,
+            context: CommandContext { history },
         }
     }
 
     pub fn execute(&mut self, command: &str, args: &[&str]) -> Result<bool, Box<dyn Error>> {
         if let Some(cmd) = self.commands.get(command) {
             let flags = Flags::new(args);
-            cmd.execute(args, &flags)?;
+            cmd.execute(args, &flags, &self.context)?;
             Ok(true)
         } else {
             Ok(false)
@@ -54,5 +54,9 @@ impl BuiltinCommand {
         for cmd in self.commands.values() {
             println!("{} - {}", cmd.name(), cmd.description());
         }
+    }
+
+    pub fn get_commands(&self) -> Vec<&'static str> {
+        self.commands.keys().copied().collect()
     }
 }

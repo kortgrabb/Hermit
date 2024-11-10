@@ -5,7 +5,12 @@ use std::{env, error::Error};
 pub struct ChangeDirectory;
 
 impl Command for ChangeDirectory {
-    fn execute(&self, args: &[&str], _flags: &Flags) -> Result<(), Box<dyn Error>> {
+    fn execute(
+        &self,
+        args: &[&str],
+        _flags: &Flags,
+        _context: &crate::command::CommandContext,
+    ) -> Result<(), Box<dyn Error>> {
         let new_dir = args.first().map_or_else(
             || Ok::<String, Box<dyn Error>>(env::var("HOME")?),
             |path| Ok::<String, Box<dyn Error>>(path.to_string()),

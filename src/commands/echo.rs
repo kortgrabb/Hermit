@@ -16,7 +16,12 @@ impl Command for Echo {
         "Prints the given arguments"
     }
 
-    fn execute(&self, args: &[&str], _flags: &Flags) -> Result<(), Box<dyn Error>> {
+    fn execute(
+        &self,
+        args: &[&str],
+        _flags: &Flags,
+        _context: &crate::command::CommandContext,
+    ) -> Result<(), Box<dyn Error>> {
         println!("{}", args.join(" "));
         Ok(())
     }
