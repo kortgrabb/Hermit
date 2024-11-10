@@ -141,12 +141,12 @@ impl Shell {
         }
 
         // Check if command contains redirects
-        let (command, args, redirect) = self.parse_redirects(command, args)?;
+        let (command, args, output) = self.parse_redirects(command, args);
 
-        // If we have a redirect
-        if let Some(redirect) = redirect {
+        // If we have an output redirect
+        if let Some(output) = output {
             let external = ExternalCommand::new(self.current_dir.clone());
-            external.execute_redirect(command, &args, redirect)?;
+            external.execute_redirect(command, &args, output)?;
             return Ok(());
         }
 
@@ -165,34 +165,17 @@ impl Shell {
         &self,
         command: &'a str,
         args: &'a [&'a str],
-    ) -> Result<(&'a str, Vec<&'a str>, Option<&'a str>), &'static str> {
-        let mut command = command;
-        let mut args_vec = args.to_vec();
-        let mut redirect = None;
+    ) -> (&'a str, Vec<&'a str>, Option<&'a str>) {
+        let mut args = args;
+        let mut output = None;
 
-        if let Some(index) = args.iter().position(|&x| x == ">") {
-            // Handle case where > is first argument
-            if index == 0 {
-                // Keep original command, empty args, set redirect
-                args_vec.clear();
-                redirect = args.get(1);
-            } else {
-                // Normal case: command is arg before >, args are before that
-                command = args[index - 1];
-                args_vec = args[..index - 1].to_vec();
-                redirect = args.get(index + 1);
-            }
-
-            if redirect.is_none() {
-                return Err("missing redirect file");
-            }
+        if args.contains(&">") {
+            let index = args.iter().position(|&x| x == ">").unwrap();
+            output = Some(args[index + 1]);
+            args = &args[..index];
         }
 
-        if redirect.is_none() {
-            return Ok((command, args_vec, None));
-        }
-
-        Ok((command, args_vec, redirect.map(|v| &**v)))
+        (command, args.to_vec(), output)
     }
 
     fn parse_pipeline<'a>(

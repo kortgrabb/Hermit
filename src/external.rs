@@ -82,7 +82,7 @@ impl ExternalCommand {
             .create(true)
             .write(true)
             .truncate(true)
-            .open(redirect)?;
+            .open(redirect.trim())?;
 
         let mut child = Command::new(command)
             .args(args)
