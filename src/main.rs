@@ -5,6 +5,7 @@ mod command;
 mod commands;
 mod external;
 mod flags;
+mod git;
 mod shell;
 mod utils;
 
@@ -12,14 +13,13 @@ pub use builtin::BuiltinCommand;
 use shell::Shell;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    tempfile::tempdir()?;
-    let mut shell = Shell::new()?;
-    match shell.run() {
-        Ok(_) => {
-            println!("Goodbye!");
-        }
-        Err(e) => eprintln!("{}", e),
+    let mut shell = Shell::new().map_err(|e| format!("Failed to initialize shell: {}", e))?;
+
+    if let Err(e) = shell.run() {
+        eprintln!("Shell error: {}", e);
+        std::process::exit(1);
     }
 
+    println!("Goodbye!");
     Ok(())
 }

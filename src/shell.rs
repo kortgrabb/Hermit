@@ -1,5 +1,7 @@
+use colored::Colorize;
 use git2::Repository;
-use rustyline::{error::ReadlineError, history::FileHistory};
+use os_release::OsRelease;
+use rustyline::{error::ReadlineError, history::FileHistory, Editor};
 use std::{
     env,
     error::Error,
@@ -7,15 +9,16 @@ use std::{
     path::PathBuf,
 };
 
-use crate::{builtin::BuiltinCommand, external::ExternalCommand};
-use colored::Colorize;
-use os_release::OsRelease;
-use rustyline::Editor;
+use crate::{
+    builtin::BuiltinCommand,
+    external::ExternalCommand,
+    git::{self, GitInfo},
+};
 
 pub struct Shell {
     current_dir: PathBuf,
     editor: Editor<(), FileHistory>,
-    repo: Option<Repository>,
+    git_info: Option<GitInfo>,
 }
 
 impl Shell {
@@ -23,12 +26,14 @@ impl Shell {
         let mut editor = Editor::new()?;
         let history_path = Self::get_history_file_path();
         let _ = editor.load_history(&history_path);
-        let repo = Repository::open(".")?;
 
-        Ok(Shell {
+        let repo = Repository::open(".").ok();
+        let git_info = repo.map(GitInfo::new);
+
+        Ok(Self {
             current_dir: env::current_dir()?,
             editor,
-            repo: Some(repo),
+            git_info,
         })
     }
 
@@ -68,11 +73,9 @@ impl Shell {
                 // Update current directory
                 self.current_dir = env::current_dir()?;
 
-                // Update git repository
-                self.repo = match Repository::open(".") {
-                    Ok(repo) => Some(repo),
-                    Err(_) => None,
-                };
+                // Update git info
+                let repo = Repository::open(".").ok();
+                self.git_info = repo.map(GitInfo::new);
             }
         }
     }
@@ -121,47 +124,28 @@ impl Shell {
 
     // Helper method to generate prompt string
     fn get_prompt(&self) -> String {
-        let username = env::var("USER").unwrap_or_else(|_| String::from("user"));
+        let username = env::var("USER").unwrap_or_else(|_| "user".to_string());
         let distro = OsRelease::new()
             .map(|os| os.name)
-            .unwrap_or_else(|_| String::from("unknown"));
+            .unwrap_or_else(|_| "unknown".to_string());
 
-        let current_dir = self.current_dir.display().to_string();
-        let current_dir = current_dir.replace(env::var("HOME").unwrap_or_default().as_str(), "~");
+        let home = env::var("HOME").unwrap_or_default();
+        let current_dir = self.current_dir.display().to_string().replace(&home, "~");
+
+        let git_info = match &self.git_info {
+            Some(git_info) => git_info.get_info(),
+            None => String::new(),
+        };
 
         format!(
             "{}@{} {} {} > ",
             username.bright_green(),
             distro.green(),
             current_dir.bright_blue(),
-            self.get_git_info()
+            git_info
         )
     }
 
-    fn get_git_info(&self) -> String {
-        if let Some(repo) = &self.repo {
-            let head = repo.head().ok();
-            let branch = head.as_ref().and_then(|h| h.shorthand());
-
-            if let Some(branch_name) = branch {
-                let mut status = String::new();
-                let statuses = repo.statuses(None).unwrap();
-                if !statuses.is_empty() {
-                    status.push('*');
-                }
-
-                format!("[{}{}]", branch_name.yellow(), status.red())
-            } else {
-                String::new()
-            }
-        } else {
-            String::new()
-        }
-    }
-
-    // FIXME: Quotes are not handled properly
-    // currently: echo "hello world" -> ["echo", "\"hello", "world\""]
-    // expected: echo "hello world" -> ["echo", "hello world"]
     fn transform_input(&self, input: String) -> Vec<String> {
         let transformed = match input.split('#').next() {
             Some(cmd) => cmd.trim(),

@@ -2,6 +2,9 @@
 name = "hermit"
 version = "0.1.0"
 edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "A simple shell implementation in Rust"
+license = "MIT"
 
 [dependencies]
 dirs = "5.0.1"
@@ -12,3 +15,6 @@ colored = "2.0.4"
 os-release = "0.1.0"
 term_size = "0.3.2"
 git2 = "0.19.0"
+
+[dev-dependencies]
+tempfile = "3.14.0"
