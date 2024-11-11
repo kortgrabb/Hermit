@@ -3,6 +3,7 @@ use std::error::Error;
 mod builtin;
 mod command;
 mod commands;
+mod completer;
 mod external;
 mod flags;
 mod git;

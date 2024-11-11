@@ -163,6 +163,7 @@ dependencies = [
  "colored",
  "dirs",
  "git2",
+ "lazy_static",
  "os-release",
  "os_pipe",
  "rustyline",

@@ -9,17 +9,26 @@ use std::{
     path::PathBuf,
 };
 
+use crate::completer::CommandCompleter;
 use crate::{builtin::BuiltinCommand, external::ExternalCommand, git::GitInfo};
 
 pub struct Shell {
     current_dir: PathBuf,
-    editor: Editor<(), FileHistory>,
+    editor: Editor<CommandCompleter, FileHistory>,
     git_info: Option<GitInfo>,
 }
 
 impl Shell {
     pub fn new() -> Result<Self, Box<dyn Error>> {
         let mut editor = Editor::new()?;
+
+        // Create builtin command instance to get command list
+        let builtin = BuiltinCommand::new(env::current_dir()?, &editor.history());
+        let commands = builtin.get_commands();
+        let completer = CommandCompleter::new(commands);
+
+        editor.set_helper(Some(completer));
+
         let history_path = Self::get_history_file_path();
         let _ = editor.load_history(&history_path);
 
@@ -94,13 +103,13 @@ impl Shell {
 
     // TODO: colored, git integration
     fn display_prompt(&self) {
-        let prompt = self.get_prompt();
-        print!("{}", prompt);
-        io::stdout().flush().unwrap_or_default();
+        let info = self.get_info();
+        print!("{}", info);
+        io::stdout().flush().unwrap();
     }
 
     fn read_input(&mut self) -> Vec<String> {
-        match self.editor.readline(&self.get_prompt()) {
+        match self.editor.readline(&self.get_info()) {
             Ok(line) => {
                 self.editor.add_history_entry(&line).unwrap_or_default();
                 // Save history after each command
@@ -119,7 +128,7 @@ impl Shell {
     }
 
     // Helper method to generate prompt string
-    fn get_prompt(&self) -> String {
+    fn get_info(&self) -> String {
         let username = env::var("USER").unwrap_or_else(|_| "user".to_string());
         let distro = OsRelease::new()
             .map(|os| os.name)
@@ -129,12 +138,12 @@ impl Shell {
         let current_dir = self.current_dir.display().to_string().replace(&home, "~");
 
         let git_info = match &self.git_info {
-            Some(git_info) => git_info.get_info(),
+            Some(git_info) => format!(" {}", git_info.get_info()),
             None => String::new(),
         };
 
         format!(
-            "{}@{} {} {} > ",
+            "{}@{} {}{} > ",
             username.bright_green(),
             distro.green(),
             current_dir.bright_blue(),
