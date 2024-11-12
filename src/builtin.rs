@@ -7,14 +7,14 @@ use crate::{
 };
 use std::{collections::HashMap, error::Error, path::PathBuf};
 
-pub struct BuiltinCommand {
+pub struct CommandRegistry {
     commands: HashMap<&'static str, Box<dyn Command>>,
     pub current_dir: PathBuf,
     context: CommandContext,
 }
 
-impl BuiltinCommand {
-    pub fn new(current_dir: PathBuf, history: &FileHistory) -> Self {
+impl CommandRegistry {
+    pub fn setup(current_dir: PathBuf, history: &FileHistory) -> Self {
         let commands: Vec<Box<dyn Command>> = vec![
             Box::new(Echo),
             Box::new(ChangeDirectory),
@@ -35,7 +35,7 @@ impl BuiltinCommand {
             builtins: command_names,
         };
 
-        BuiltinCommand {
+        CommandRegistry {
             commands: command_map,
             current_dir,
             context,

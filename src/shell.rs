@@ -10,8 +10,10 @@ use std::{
 };
 
 use crate::completer::CommandCompleter;
-use crate::{builtin::BuiltinCommand, external::ExternalCommand, git::GitInfo};
+use crate::{builtin::CommandRegistry, external::ExternalCommand, git::GitInfo};
 
+/// Shell represents an interactive command-line interface that handles both built-in
+/// and external commands, with support for command history, git integration, and tab completion.
 pub struct Shell {
     current_dir: PathBuf,
     editor: Editor<CommandCompleter, FileHistory>,
@@ -19,11 +21,15 @@ pub struct Shell {
 }
 
 impl Shell {
+    /// Creates a new Shell instance with initialized command completion, history, and git information.
+    ///
+    /// # Returns
+    /// * `Result<Self, Box<dyn Error>>` - A new Shell instance or an error if initialization fails.
     pub fn new() -> Result<Self, Box<dyn Error>> {
         let mut editor = Editor::new()?;
 
         // Create builtin command instance to get command list
-        let builtin = BuiltinCommand::new(env::current_dir()?, &editor.history());
+        let builtin = CommandRegistry::setup(env::current_dir()?, editor.history());
         let commands = builtin.get_commands();
         let completer = CommandCompleter::new(commands);
 
@@ -42,6 +48,10 @@ impl Shell {
         })
     }
 
+    /// Starts the main shell loop, processing user input until exit command is received.
+    ///
+    /// # Returns
+    /// * `Result<(), Box<dyn Error>>` - Ok(()) on successful completion or an error if execution fails.
     pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
         loop {
             self.display_prompt();
@@ -56,7 +66,6 @@ impl Shell {
 
                 let parts: Vec<&str> = parts.iter().map(|s| s.as_str()).collect();
                 let command = parts.first().unwrap();
-                // FIXME: change execute signature to take Vec<String> instead of Vec<&str>
                 let expanded_args: Vec<String> = parts[1..]
                     .iter()
                     .map(|arg| self.expand_tilde(arg))
@@ -85,6 +94,10 @@ impl Shell {
         }
     }
 
+    /// Expands the tilde (~) character in paths to the user's home directory.
+    ///
+    /// # Arguments
+    /// * `path` - The path string that may contain a tilde
     fn expand_tilde(&self, path: &str) -> String {
         if path.starts_with("~") {
             if let Ok(home) = env::var("HOME") {
@@ -96,18 +109,23 @@ impl Shell {
         path.to_string()
     }
 
+    /// Returns the path to the shell history file.
     fn get_history_file_path() -> PathBuf {
         let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
         PathBuf::from(home).join(".hermit_history")
     }
 
-    // TODO: colored, git integration
+    /// Displays the shell prompt with username, distribution, current directory, and git information.
     fn display_prompt(&self) {
         let info = self.get_info();
         print!("{}", info);
         io::stdout().flush().unwrap();
     }
 
+    /// Reads a line of input from the user, handling special cases like Ctrl-C and Ctrl-D.
+    ///
+    /// # Returns
+    /// * `Vec<String>` - A vector of command strings split by semicolons
     fn read_input(&mut self) -> Vec<String> {
         match self.editor.readline(&self.get_info()) {
             Ok(line) => {
@@ -127,7 +145,10 @@ impl Shell {
         }
     }
 
-    // Helper method to generate prompt string
+    /// Generates the shell prompt string with colored components.
+    ///
+    /// # Returns
+    /// * `String` - The formatted prompt string
     fn get_info(&self) -> String {
         let username = env::var("USER").unwrap_or_else(|_| "user".to_string());
         let distro = OsRelease::new()
@@ -151,6 +172,10 @@ impl Shell {
         )
     }
 
+    /// Transforms raw input by removing comments and splitting into multiple commands.
+    ///
+    /// # Arguments
+    /// * `input` - The raw input string from the user
     fn transform_input(&self, input: String) -> Vec<String> {
         let transformed = match input.split('#').next() {
             Some(cmd) => cmd.trim(),
@@ -165,91 +190,114 @@ impl Shell {
             .collect()
     }
 
+    /// Executes a command with its arguments, handling pipelines, redirections, and built-in commands.
+    ///
+    /// # Arguments
+    /// * `command` - The command to execute
+    /// * `args` - The command arguments
     fn execute(&mut self, command: &str, args: &[&str]) -> Result<(), Box<dyn Error>> {
-        // Check if command contains pipes
-        let pipeline: Vec<(&str, Vec<&str>)> = self.parse_pipeline(command, args);
-
-        // If we have a piped command
-        if pipeline.len() > 1 {
-            let external = ExternalCommand::new(self.current_dir.clone());
-            external.execute_pipeline(&pipeline)?;
+        if command.is_empty() {
             return Ok(());
         }
 
-        // Check if command contains redirects
-        let (command, args, output) = self.parse_redirects(command, args);
-
-        // If we have an output redirect
-        if let Some(output) = output {
+        // First check for pipeline
+        if let Some(pipeline) = self.try_parse_pipeline(command, args) {
             let external = ExternalCommand::new(self.current_dir.clone());
-            external.execute_redirect(command, &args, output)?;
-            return Ok(());
+            return Ok(external.execute_pipeline(&pipeline)?);
         }
 
-        // Execute without pipes
-        match self.execute_builtin(command, &args) {
-            Ok(true) => Ok(()),
-            Ok(false) => match self.execute_external(command, &args) {
-                Ok(_) => Ok(()),
-                Err(e) => Err(e),
-            },
-            Err(e) => Err(e),
+        // Then check for redirects
+        if let Some((cmd, args, output)) = self.try_parse_redirects(command, args) {
+            let external = ExternalCommand::new(self.current_dir.clone());
+            return Ok(external.execute_redirect(cmd, &args, &output)?);
+        }
+
+        // Finally try builtin or external
+        self.execute_command(command, args)
+    }
+
+    fn execute_command(&mut self, command: &str, args: &[&str]) -> Result<(), Box<dyn Error>> {
+        match self.execute_builtin(command, args)? {
+            true => Ok(()),
+            false => self.execute_external(command, args),
         }
     }
 
-    fn parse_redirects<'a>(
+    /// Parses a command line into a pipeline of commands if pipe operators are present.
+    ///
+    /// # Arguments
+    /// * `command` - The main command
+    /// * `args` - The command arguments
+    ///
+    /// # Returns
+    /// * `Option<Vec<(&str, Vec<&str>)>>` - A vector of command and arguments tuples if pipeline exists
+    fn try_parse_pipeline<'a>(
         &self,
         command: &'a str,
         args: &'a [&'a str],
-    ) -> (&'a str, Vec<&'a str>, Option<&'a str>) {
-        let mut args = args;
-        let mut output = None;
+    ) -> Option<Vec<(&'a str, Vec<&'a str>)>> {
+        let mut commands = vec![command];
+        commands.extend(args);
 
-        if args.contains(&">") {
-            let index = args.iter().position(|&x| x == ">").unwrap();
-            output = Some(args[index + 1]);
-            args = &args[..index];
+        if !commands.contains(&"|") {
+            return None;
         }
 
-        (command, args.to_vec(), output)
-    }
-
-    fn parse_pipeline<'a>(
-        &self,
-        command: &'a str,
-        args: &'a [&'a str],
-    ) -> Vec<(&'a str, Vec<&'a str>)> {
         let mut pipeline = Vec::new();
-        let mut current_command = Vec::new();
-        current_command.push(command);
-        current_command.extend(args);
+        let mut current_cmd = Vec::new();
 
-        let mut result = Vec::new();
-
-        for arg in current_command {
+        for arg in commands {
             if arg == "|" {
-                if !result.is_empty() {
-                    let cmd = result[0];
-                    let args = result[1..].to_vec();
-                    pipeline.push((cmd, args));
-                    result.clear();
+                if !current_cmd.is_empty() {
+                    pipeline.push((current_cmd[0], current_cmd[1..].to_vec()));
+                    current_cmd.clear();
                 }
             } else {
-                result.push(arg);
+                current_cmd.push(arg);
             }
         }
 
-        if !result.is_empty() {
-            let cmd = result[0];
-            let args = result[1..].to_vec();
-            pipeline.push((cmd, args));
+        if !current_cmd.is_empty() {
+            pipeline.push((current_cmd[0], current_cmd[1..].to_vec()));
         }
 
-        pipeline
+        Some(pipeline)
+    }
+
+    /// Parses command line for output redirection.
+    ///
+    /// # Arguments
+    /// * `command` - The main command
+    /// * `args` - The command arguments
+    ///
+    /// # Returns
+    /// * `Option<(&str, Vec<&str>, String)>` - Tuple of command, args, and output file if redirection exists
+    fn try_parse_redirects<'a>(
+        &self,
+        command: &'a str,
+        args: &'a [&'a str],
+    ) -> Option<(&'a str, Vec<&'a str>, String)> {
+        let mut commands = vec![command];
+        commands.extend(args);
+
+        if let Some(pos) = commands.iter().position(|&x| x == ">") {
+            if pos + 1 < commands.len() {
+                let output = commands[pos + 1].to_string();
+                let command = commands[0];
+                let args = if pos > 1 {
+                    commands[1..pos].to_vec()
+                } else {
+                    Vec::new()
+                };
+                return Some((command, args, output));
+            }
+        }
+
+        None
     }
 
     fn execute_builtin(&mut self, command: &str, args: &[&str]) -> Result<bool, Box<dyn Error>> {
-        let mut builtin = BuiltinCommand::new(self.current_dir.clone(), self.editor.history());
+        let mut builtin = CommandRegistry::setup(self.current_dir.clone(), self.editor.history());
         builtin.execute(command, args)
     }
 
@@ -264,6 +312,13 @@ impl Shell {
         }
     }
 
+    /// Parses input string into command arguments, handling quoted strings.
+    ///
+    /// # Arguments
+    /// * `input` - The input string to parse
+    ///
+    /// # Returns
+    /// * `Vec<String>` - The parsed command arguments
     pub fn parse_args(&self, input: &str) -> Vec<String> {
         let mut parts = Vec::new();
         let mut current_part = String::new();

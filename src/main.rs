@@ -10,7 +10,7 @@ mod git;
 mod shell;
 mod utils;
 
-pub use builtin::BuiltinCommand;
+pub use builtin::CommandRegistry;
 use shell::Shell;
 
 fn main() -> Result<(), Box<dyn Error>> {
