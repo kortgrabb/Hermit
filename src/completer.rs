@@ -50,7 +50,6 @@ impl Completer for CommandCompleter {
             );
         }
 
-        // Add file matches if the word starts with ./ or /
         if word.starts_with("./") || word.starts_with('/') || !word.contains('/') {
             if let Ok(entries) = std::fs::read_dir(".") {
                 matches.extend(

@@ -217,9 +217,10 @@ impl Shell {
     }
 
     fn execute_command(&mut self, command: &str, args: &[&str]) -> Result<(), Box<dyn Error>> {
-        match self.execute_builtin(command, args)? {
-            true => Ok(()),
-            false => self.execute_external(command, args),
+        if self.execute_builtin(command, args)? {
+            Ok(())
+        } else {
+            self.execute_external(command, args)
         }
     }
 
