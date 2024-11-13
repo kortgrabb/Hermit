@@ -32,7 +32,7 @@ impl Shell {
         let current_dir = env::current_dir()?;
         let history_path = Self::get_history_file_path();
 
-        Self::setup_editor(&mut editor, &current_dir, &history_path)?;
+        Self::setup_editor(&mut editor, &history_path)?;
 
         let repo = Repository::discover(&current_dir).ok();
         let git_info = repo.map(GitInfo::new);
@@ -47,10 +47,9 @@ impl Shell {
 
     fn setup_editor(
         editor: &mut Editor<CommandCompleter, FileHistory>,
-        current_dir: &PathBuf,
         history_path: &PathBuf,
     ) -> ShellResult<()> {
-        let builtin = CommandRegistry::setup(current_dir.clone(), editor.history());
+        let builtin = CommandRegistry::setup(editor.history());
         let commands = builtin.get_commands();
         let completer = CommandCompleter::new(commands);
 
@@ -287,7 +286,7 @@ impl Shell {
     }
 
     fn execute_builtin(&mut self, command: &str, args: &[&str]) -> ShellResult<bool> {
-        let mut builtin = CommandRegistry::setup(self.current_dir.clone(), self.editor.history());
+        let mut builtin = CommandRegistry::setup(self.editor.history());
         builtin.execute(command, args)
     }
 

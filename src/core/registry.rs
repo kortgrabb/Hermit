@@ -1,7 +1,7 @@
 use rustyline::history::FileHistory;
 
 use crate::commands::{
-    ChangeDirectory, Echo, History, ListDirectory, PrintWorkingDirectory, TypeCommand,
+    ChangeDirectory, Echo, History, ListConfig, ListDirectory, PrintWorkingDirectory, TypeCommand,
 };
 use std::{collections::HashMap, error::Error, path::PathBuf};
 
@@ -12,16 +12,15 @@ use super::{
 
 pub struct CommandRegistry {
     commands: HashMap<&'static str, Box<dyn Command>>,
-    pub current_dir: PathBuf,
     context: CommandContext,
 }
 
 impl CommandRegistry {
-    pub fn setup(current_dir: PathBuf, history: &FileHistory) -> Self {
+    pub fn setup(history: &FileHistory) -> Self {
         let commands: Vec<Box<dyn Command>> = vec![
             Box::new(Echo),
             Box::new(ChangeDirectory),
-            Box::new(ListDirectory),
+            Box::new(ListDirectory::new(ListConfig::default())),
             Box::new(PrintWorkingDirectory),
             Box::new(History),
             Box::new(TypeCommand),
@@ -40,7 +39,6 @@ impl CommandRegistry {
 
         CommandRegistry {
             commands: command_map,
-            current_dir,
             context,
         }
     }
@@ -48,23 +46,10 @@ impl CommandRegistry {
     pub fn execute(&mut self, command: &str, args: &[&str]) -> Result<bool, Box<dyn Error>> {
         if let Some(cmd) = self.commands.get(command) {
             let flags = Flags::new(args);
-            cmd.execute(args, &flags, &self.context)?;
+            cmd.execute(args, &flags?, &self.context)?;
             Ok(true)
         } else {
             Ok(false)
-        }
-    }
-
-    pub fn print_command_help(&self, command: &str) {
-        if let Some(cmd) = self.commands.get(command) {
-            println!("{} - {}", cmd.name(), cmd.description());
-            println!("{}", cmd.extended_description());
-        }
-    }
-
-    pub fn print_all_help(&self) {
-        for cmd in self.commands.values() {
-            println!("{} - {}", cmd.name(), cmd.description());
         }
     }
 

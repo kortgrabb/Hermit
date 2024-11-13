@@ -7,6 +7,15 @@ pub struct CommandContext {
     pub builtins: Vec<&'static str>,
 }
 
+impl Default for CommandContext {
+    fn default() -> Self {
+        Self {
+            history: Vec::new(),
+            builtins: Vec::new(),
+        }
+    }
+}
+
 pub trait Command {
     fn execute(
         &self,
