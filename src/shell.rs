@@ -182,7 +182,7 @@ impl Shell {
     fn transform_input(&self, input: String) -> Vec<String> {
         input
             .split('#')
-            .next()
+            .next() // Return the uncommented section
             .unwrap_or("")
             .split(';')
             .map(str::trim)
@@ -234,7 +234,7 @@ impl Shell {
         command: &'a str,
         args: &'a [&'a str],
     ) -> Option<(&'a str, Vec<&'a str>, String)> {
-        let mut commands = std::iter::once(command)
+        let commands = std::iter::once(command)
             .chain(args.iter().copied())
             .collect::<Vec<_>>();
 
