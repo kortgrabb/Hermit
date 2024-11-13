@@ -1,5 +1,9 @@
-use crate::{command::Command, flags::Flags};
 use std::{env, error::Error};
+
+use crate::core::{
+    command::{Command, CommandContext},
+    flags::Flags,
+};
 
 #[derive(Clone)]
 pub struct ChangeDirectory;
@@ -9,7 +13,7 @@ impl Command for ChangeDirectory {
         &self,
         args: &[&str],
         _flags: &Flags,
-        _context: &crate::command::CommandContext,
+        _context: &CommandContext,
     ) -> Result<(), Box<dyn Error>> {
         let new_dir = args.first().map_or_else(
             || Ok::<String, Box<dyn Error>>(env::var("HOME")?),

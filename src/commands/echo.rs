@@ -1,4 +1,7 @@
-use crate::{command::Command, flags::Flags};
+use crate::core::{
+    command::{Command, CommandContext},
+    flags::Flags,
+};
 use std::error::Error;
 
 #[derive(Clone)]
@@ -21,7 +24,7 @@ impl Command for Echo {
         &self,
         args: &[&str],
         _flags: &Flags,
-        _context: &crate::command::CommandContext,
+        _context: &CommandContext,
     ) -> Result<(), Box<dyn Error>> {
         println!("{}", args.join(" "));
         Ok(())

@@ -1,5 +1,6 @@
-use crate::flags::Flags;
 use std::error::Error;
+
+use super::flags::Flags;
 
 pub struct CommandContext {
     pub history: Vec<String>,

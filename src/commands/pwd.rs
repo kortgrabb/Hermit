@@ -1,6 +1,9 @@
 use std::{env, error::Error};
 
-use crate::{command::Command, flags::Flags};
+use crate::core::{
+    command::{Command, CommandContext},
+    flags::Flags,
+};
 
 #[derive(Clone)]
 pub struct PrintWorkingDirectory;
@@ -10,7 +13,7 @@ impl Command for PrintWorkingDirectory {
         &self,
         _args: &[&str],
         _flags: &Flags,
-        _context: &crate::command::CommandContext,
+        _context: &CommandContext,
     ) -> Result<(), Box<dyn Error>> {
         println!("{}", env::current_dir()?.display());
         Ok(())

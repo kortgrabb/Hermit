@@ -1,11 +1,14 @@
 use rustyline::history::FileHistory;
 
-use crate::{
-    command::{Command, CommandContext},
-    commands::{ChangeDirectory, Echo, History, ListDirectory, PrintWorkingDirectory, TypeCommand},
-    flags::Flags,
+use crate::commands::{
+    ChangeDirectory, Echo, History, ListDirectory, PrintWorkingDirectory, TypeCommand,
 };
 use std::{collections::HashMap, error::Error, path::PathBuf};
+
+use super::{
+    command::{Command, CommandContext},
+    flags::Flags,
+};
 
 pub struct CommandRegistry {
     commands: HashMap<&'static str, Box<dyn Command>>,

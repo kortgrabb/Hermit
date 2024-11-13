@@ -3,7 +3,6 @@ use rustyline::{
     error::ReadlineError,
     highlight::Highlighter,
     hint::Hinter,
-    line_buffer::LineBuffer,
     validate::{self, MatchingBracketValidator, Validator},
     Context, Helper,
 };

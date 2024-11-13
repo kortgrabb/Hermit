@@ -1,8 +1,9 @@
+use colored::Colorize;
 use std::{env, error::Error, fs, path::PathBuf};
 
-use colored::Colorize;
-
-use crate::{command::Command, flags::Flags, utils};
+use crate::core::command::CommandContext;
+use crate::core::{command::Command, flags::Flags};
+use crate::utils;
 
 pub struct ListDirectory;
 
@@ -18,7 +19,7 @@ impl Command for ListDirectory {
         &self,
         args: &[&str],
         flags: &Flags,
-        _context: &crate::command::CommandContext,
+        _context: &CommandContext,
     ) -> Result<(), Box<dyn Error>> {
         let path = args
             .iter()

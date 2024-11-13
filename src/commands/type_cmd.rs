@@ -1,4 +1,4 @@
-use crate::command::Command;
+use crate::core::{command::Command, command::CommandContext, flags::Flags};
 
 #[derive(Clone)]
 pub struct TypeCommand;
@@ -19,8 +19,8 @@ impl Command for TypeCommand {
     fn execute(
         &self,
         args: &[&str],
-        _flags: &crate::flags::Flags,
-        context: &crate::command::CommandContext,
+        _flags: &Flags,
+        context: &CommandContext,
     ) -> Result<(), Box<dyn std::error::Error>> {
         if args.is_empty() {
             return Err("No command provided".into());

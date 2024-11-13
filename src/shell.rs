@@ -9,8 +9,10 @@ use std::{
     path::PathBuf,
 };
 
-use crate::completer::CommandCompleter;
-use crate::{builtin::CommandRegistry, external::ExternalCommand, git::GitInfo};
+use crate::{
+    core::{completer::CommandCompleter, external::ExternalCommand, registry::CommandRegistry},
+    git::GitInfo,
+};
 
 type ShellResult<T> = Result<T, Box<dyn Error>>;
 

@@ -1,17 +1,12 @@
 use std::error::Error;
 
-mod builtin;
-mod command;
 mod commands;
-mod completer;
 mod config;
-mod external;
-mod flags;
+mod core;
 mod git;
 mod shell;
 mod utils;
 
-pub use builtin::CommandRegistry;
 use shell::Shell;
 
 fn main() -> Result<(), Box<dyn Error>> {
