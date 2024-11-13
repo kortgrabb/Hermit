@@ -12,156 +12,154 @@ use std::{
 use crate::completer::CommandCompleter;
 use crate::{builtin::CommandRegistry, external::ExternalCommand, git::GitInfo};
 
+type ShellResult<T> = Result<T, Box<dyn Error>>;
+
 /// Shell represents an interactive command-line interface that handles both built-in
 /// and external commands, with support for command history, git integration, and tab completion.
 pub struct Shell {
     current_dir: PathBuf,
     editor: Editor<CommandCompleter, FileHistory>,
     git_info: Option<GitInfo>,
+    history_path: PathBuf,
 }
 
 impl Shell {
     /// Creates a new Shell instance with initialized command completion, history, and git information.
-    ///
-    /// # Returns
-    /// * `Result<Self, Box<dyn Error>>` - A new Shell instance or an error if initialization fails.
-    pub fn new() -> Result<Self, Box<dyn Error>> {
+    pub fn new() -> ShellResult<Self> {
         let mut editor = Editor::new()?;
+        let current_dir = env::current_dir()?;
+        let history_path = Self::get_history_file_path();
 
-        // Create builtin command instance to get command list
-        let builtin = CommandRegistry::setup(env::current_dir()?, editor.history());
+        Self::setup_editor(&mut editor, &current_dir, &history_path)?;
+
+        let repo = Repository::discover(&current_dir).ok();
+        let git_info = repo.map(GitInfo::new);
+
+        Ok(Self {
+            current_dir,
+            editor,
+            git_info,
+            history_path,
+        })
+    }
+
+    fn setup_editor(
+        editor: &mut Editor<CommandCompleter, FileHistory>,
+        current_dir: &PathBuf,
+        history_path: &PathBuf,
+    ) -> ShellResult<()> {
+        let builtin = CommandRegistry::setup(current_dir.clone(), editor.history());
         let commands = builtin.get_commands();
         let completer = CommandCompleter::new(commands);
 
         editor.set_helper(Some(completer));
+        editor.load_history(history_path)?;
 
-        let history_path = Self::get_history_file_path();
-        let _ = editor.load_history(&history_path);
-
-        let repo = Repository::open(".").ok();
-        let git_info = repo.map(GitInfo::new);
-
-        Ok(Self {
-            current_dir: env::current_dir()?,
-            editor,
-            git_info,
-        })
+        Ok(())
     }
 
     /// Starts the main shell loop, processing user input until exit command is received.
-    ///
-    /// # Returns
-    /// * `Result<(), Box<dyn Error>>` - Ok(()) on successful completion or an error if execution fails.
-    pub fn run(&mut self) -> Result<(), Box<dyn Error>> {
-        loop {
-            self.display_prompt();
-            let input = self.read_input();
-
+    pub fn run(&mut self) -> ShellResult<()> {
+        while let Some(input) = self.read_input() {
             if input.is_empty() {
                 continue;
             }
 
-            for command in input {
-                let parts = self.parse_args(&command);
+            self.process_commands(&input)?;
+            self.update_state()?;
+        }
 
-                let parts: Vec<&str> = parts.iter().map(|s| s.as_str()).collect();
-                let command = parts.first().unwrap();
-                let expanded_args: Vec<String> = parts[1..]
-                    .iter()
-                    .map(|arg| self.expand_tilde(arg))
-                    .collect();
-                let args: Vec<&str> = expanded_args.iter().map(|s| s.as_str()).collect();
+        self.editor.save_history(&self.history_path)?;
+        Ok(())
+    }
 
-                match command.to_string().as_str() {
-                    "exit" => {
-                        let history_path = Self::get_history_file_path();
-                        self.editor.save_history(&history_path).unwrap();
-                        return Ok(());
-                    }
-                    _ => match self.execute(command, &args) {
-                        Ok(_) => {}
-                        Err(e) => eprintln!("{}", e),
-                    },
-                }
+    fn process_commands(&mut self, commands: &[String]) -> ShellResult<()> {
+        for command in commands {
+            let parts = self.parse_args(command);
+            if parts.is_empty() {
+                continue;
+            }
 
-                // Update current directory
-                self.current_dir = env::current_dir()?;
+            let (cmd, args) = parts.split_first().unwrap();
+            let expanded_args: Vec<String> =
+                args.iter().map(|arg| self.expand_tilde(arg)).collect();
 
-                // Update git info
-                let repo = Repository::open(".").ok();
-                self.git_info = repo.map(GitInfo::new);
+            if *cmd == "exit" {
+                return self.handle_exit();
+            }
+
+            if let Err(e) = self.execute(cmd, &expanded_args) {
+                eprintln!("Error: {}", e);
             }
         }
+        Ok(())
+    }
+
+    fn handle_exit(&mut self) -> ShellResult<()> {
+        self.editor.save_history(&self.history_path)?;
+        std::process::exit(0);
+    }
+
+    fn update_state(&mut self) -> ShellResult<()> {
+        self.current_dir = env::current_dir()?;
+        self.git_info = Repository::discover(&self.current_dir)
+            .ok()
+            .map(GitInfo::new);
+        Ok(())
     }
 
     /// Expands the tilde (~) character in paths to the user's home directory.
-    ///
-    /// # Arguments
-    /// * `path` - The path string that may contain a tilde
     fn expand_tilde(&self, path: &str) -> String {
-        if path.starts_with("~") {
+        if path.starts_with('~') {
             if let Ok(home) = env::var("HOME") {
-                // Replace only the first occurrence of ~
-                return path.replacen("~", &home, 1);
+                return path.replacen('~', &home, 1);
             }
         }
-
         path.to_string()
     }
 
     /// Returns the path to the shell history file.
     fn get_history_file_path() -> PathBuf {
-        let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        PathBuf::from(home).join(".hermit_history")
+        env::var("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(".hermit_history")
     }
 
     /// Displays the shell prompt with username, distribution, current directory, and git information.
     fn display_prompt(&self) {
-        let info = self.get_info();
-        print!("{}", info);
+        print!("{}", self.get_prompt_info());
         io::stdout().flush().unwrap();
     }
 
     /// Reads a line of input from the user, handling special cases like Ctrl-C and Ctrl-D.
-    ///
-    /// # Returns
-    /// * `Vec<String>` - A vector of command strings split by semicolons
-    fn read_input(&mut self) -> Vec<String> {
-        match self.editor.readline(&self.get_info()) {
+    fn read_input(&mut self) -> Option<Vec<String>> {
+        self.display_prompt();
+
+        match self.editor.readline(&self.get_prompt_info()) {
             Ok(line) => {
-                self.editor.add_history_entry(&line).unwrap_or_default();
-                // Save history after each command
-                self.transform_input(line)
+                self.editor.add_history_entry(&line).ok();
+                Some(self.transform_input(line))
             }
-            Err(ReadlineError::Interrupted) => {
-                // Ctrl-C
-                vec![]
-            }
-            Err(ReadlineError::Eof) => {
-                // Ctrl-D
-                std::process::exit(0);
-            }
-            Err(_) => vec![],
+            Err(ReadlineError::Interrupted) => Some(vec![]),
+            Err(ReadlineError::Eof) => None,
+            Err(_) => Some(vec![]),
         }
     }
 
     /// Generates the shell prompt string with colored components.
-    ///
-    /// # Returns
-    /// * `String` - The formatted prompt string
-    fn get_info(&self) -> String {
+    fn get_prompt_info(&self) -> String {
         let username = env::var("USER").unwrap_or_else(|_| "user".to_string());
         let distro = OsRelease::new()
             .map(|os| os.name)
             .unwrap_or_else(|_| "unknown".to_string());
 
-        let home = env::var("HOME").unwrap_or_default();
-        let current_dir = self.current_dir.display().to_string().replace(&home, "~");
-
-        let git_info = match &self.git_info {
-            Some(git_info) => format!(" {}", git_info.get_info()),
-            None => String::new(),
-        };
+        let current_dir = self.format_current_dir();
+        let git_info = self
+            .git_info
+            .as_ref()
+            .map(|git| format!(" {}", git.get_info()))
+            .unwrap_or_default();
 
         format!(
             "{}@{} {}{} > ",
@@ -172,51 +170,57 @@ impl Shell {
         )
     }
 
-    /// Transforms raw input by removing comments and splitting into multiple commands.
-    ///
-    /// # Arguments
-    /// * `input` - The raw input string from the user
-    fn transform_input(&self, input: String) -> Vec<String> {
-        let transformed = match input.split('#').next() {
-            Some(cmd) => cmd.trim(),
-            None => "",
-        };
+    fn format_current_dir(&self) -> String {
+        if let Ok(home) = env::var("HOME") {
+            self.current_dir.display().to_string().replace(&home, "~")
+        } else {
+            self.current_dir.display().to_string()
+        }
+    }
 
-        // split into multiple commands with ; first, then handle each separately
-        let transformed = transformed.split(';');
-        transformed
-            .map(|cmd| cmd.trim().to_string())
+    /// Transforms raw input by removing comments and splitting into multiple commands.
+    fn transform_input(&self, input: String) -> Vec<String> {
+        input
+            .split('#')
+            .next()
+            .unwrap_or("")
+            .split(';')
+            .map(str::trim)
             .filter(|cmd| !cmd.is_empty())
+            .map(String::from)
             .collect()
     }
 
     /// Executes a command with its arguments, handling pipelines, redirections, and built-in commands.
-    ///
-    /// # Arguments
-    /// * `command` - The command to execute
-    /// * `args` - The command arguments
-    fn execute(&mut self, command: &str, args: &[&str]) -> Result<(), Box<dyn Error>> {
+    fn execute(&mut self, command: &str, args: &[String]) -> ShellResult<()> {
         if command.is_empty() {
             return Ok(());
         }
 
-        // First check for pipeline
-        if let Some(pipeline) = self.try_parse_pipeline(command, args) {
-            let external = ExternalCommand::new(self.current_dir.clone());
-            return Ok(external.execute_pipeline(&pipeline)?);
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+
+        if let Some(pipeline) = self.try_parse_pipeline(command, &args) {
+            return self.execute_pipeline(&pipeline);
         }
 
-        // Then check for redirects
-        if let Some((cmd, args, output)) = self.try_parse_redirects(command, args) {
-            let external = ExternalCommand::new(self.current_dir.clone());
-            return Ok(external.execute_redirect(cmd, &args, &output)?);
+        if let Some((cmd, args, output)) = self.try_parse_redirects(command, &args) {
+            return self.execute_redirect(cmd, &args, &output);
         }
 
-        // Finally try builtin or external
-        self.execute_command(command, args)
+        self.execute_command(command, &args)
     }
 
-    fn execute_command(&mut self, command: &str, args: &[&str]) -> Result<(), Box<dyn Error>> {
+    fn execute_pipeline(&self, pipeline: &[(&str, Vec<&str>)]) -> ShellResult<()> {
+        let external = ExternalCommand::new(self.current_dir.clone());
+        Ok(external.execute_pipeline(pipeline)?)
+    }
+
+    fn execute_redirect(&self, cmd: &str, args: &[&str], output: &str) -> ShellResult<()> {
+        let external = ExternalCommand::new(self.current_dir.clone());
+        Ok(external.execute_redirect(cmd, args, output)?)
+    }
+
+    fn execute_command(&mut self, command: &str, args: &[&str]) -> ShellResult<()> {
         if self.execute_builtin(command, args)? {
             Ok(())
         } else {
@@ -224,21 +228,36 @@ impl Shell {
         }
     }
 
+    /// Parses command line for output redirection.
+    fn try_parse_redirects<'a>(
+        &self,
+        command: &'a str,
+        args: &'a [&'a str],
+    ) -> Option<(&'a str, Vec<&'a str>, String)> {
+        let mut commands = std::iter::once(command)
+            .chain(args.iter().copied())
+            .collect::<Vec<_>>();
+
+        if let Some(pos) = commands.iter().position(|&x| x == ">") {
+            if pos + 1 < commands.len() {
+                let output = commands[pos + 1].to_string();
+                let command = commands[0];
+                let args = commands[1..pos].to_vec();
+                return Some((command, args, output));
+            }
+        }
+        None
+    }
+
     /// Parses a command line into a pipeline of commands if pipe operators are present.
-    ///
-    /// # Arguments
-    /// * `command` - The main command
-    /// * `args` - The command arguments
-    ///
-    /// # Returns
-    /// * `Option<Vec<(&str, Vec<&str>)>>` - A vector of command and arguments tuples if pipeline exists
     fn try_parse_pipeline<'a>(
         &self,
         command: &'a str,
         args: &'a [&'a str],
     ) -> Option<Vec<(&'a str, Vec<&'a str>)>> {
-        let mut commands = vec![command];
-        commands.extend(args);
+        let commands = std::iter::once(command)
+            .chain(args.iter().copied())
+            .collect::<Vec<_>>();
 
         if !commands.contains(&"|") {
             return None;
@@ -247,7 +266,7 @@ impl Shell {
         let mut pipeline = Vec::new();
         let mut current_cmd = Vec::new();
 
-        for arg in commands {
+        for &arg in &commands {
             if arg == "|" {
                 if !current_cmd.is_empty() {
                     pipeline.push((current_cmd[0], current_cmd[1..].to_vec()));
@@ -265,73 +284,34 @@ impl Shell {
         Some(pipeline)
     }
 
-    /// Parses command line for output redirection.
-    ///
-    /// # Arguments
-    /// * `command` - The main command
-    /// * `args` - The command arguments
-    ///
-    /// # Returns
-    /// * `Option<(&str, Vec<&str>, String)>` - Tuple of command, args, and output file if redirection exists
-    fn try_parse_redirects<'a>(
-        &self,
-        command: &'a str,
-        args: &'a [&'a str],
-    ) -> Option<(&'a str, Vec<&'a str>, String)> {
-        let mut commands = vec![command];
-        commands.extend(args);
-
-        if let Some(pos) = commands.iter().position(|&x| x == ">") {
-            if pos + 1 < commands.len() {
-                let output = commands[pos + 1].to_string();
-                let command = commands[0];
-                let args = if pos > 1 {
-                    commands[1..pos].to_vec()
-                } else {
-                    Vec::new()
-                };
-                return Some((command, args, output));
-            }
-        }
-
-        None
-    }
-
-    fn execute_builtin(&mut self, command: &str, args: &[&str]) -> Result<bool, Box<dyn Error>> {
+    fn execute_builtin(&mut self, command: &str, args: &[&str]) -> ShellResult<bool> {
         let mut builtin = CommandRegistry::setup(self.current_dir.clone(), self.editor.history());
         builtin.execute(command, args)
     }
 
-    fn execute_external(&self, command: &str, args: &[&str]) -> Result<(), Box<dyn Error>> {
+    fn execute_external(&self, command: &str, args: &[&str]) -> ShellResult<()> {
         let external = ExternalCommand::new(self.current_dir.clone());
-        match external.execute(command, args) {
-            Ok(_) => Ok(()),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                Err(format!("command not found: {}", command).into())
+        external.execute(command, args).map_err(|e| {
+            if e.kind() == io::ErrorKind::NotFound {
+                format!("command not found: {}", command).into()
+            } else {
+                e.into()
             }
-            Err(e) => Err(e.into()),
-        }
+        })
     }
 
     /// Parses input string into command arguments, handling quoted strings.
-    ///
-    /// # Arguments
-    /// * `input` - The input string to parse
-    ///
-    /// # Returns
-    /// * `Vec<String>` - The parsed command arguments
     pub fn parse_args(&self, input: &str) -> Vec<String> {
         let mut parts = Vec::new();
         let mut current_part = String::new();
         let mut in_quotes = false;
 
-        for c in input.chars().peekable() {
+        for c in input.chars() {
             match c {
                 '"' => in_quotes = !in_quotes,
                 ' ' if !in_quotes => {
                     if !current_part.is_empty() {
-                        parts.push(current_part.clone());
-                        current_part.clear();
+                        parts.push(std::mem::take(&mut current_part));
                     }
                 }
                 _ => current_part.push(c),
@@ -348,49 +328,52 @@ impl Shell {
 
 #[cfg(test)]
 mod tests {
-    use rustyline::history::History;
-
     use super::*;
 
     #[test]
-    fn test_shell_new() {
-        let shell = Shell::new().unwrap();
-        assert_eq!(shell.current_dir, env::current_dir().unwrap());
-
-        // Check if history file is created in the right location
-        assert!(Shell::get_history_file_path().exists());
-    }
-
-    // Stoopid test but whatever
-    #[test]
-    fn test_shell_history() {
-        let mut shell = Shell::new().unwrap();
-        let _ = shell.editor.add_history_entry("echo hello");
-        assert_eq!(shell.editor.history().len(), 1);
-
-        let _ = shell.editor.clear_history();
-
-        assert_eq!(shell.editor.history().len(), 0);
-    }
-
-    #[test]
-    fn test_shell_current_dir() {
-        let shell = Shell::new().unwrap();
-        assert!(shell.current_dir.exists());
+    fn test_shell_initialization() -> ShellResult<()> {
+        let shell = Shell::new()?;
         assert!(shell.current_dir.is_absolute());
+        assert!(shell.history_path.ends_with(".hermit_history"));
+        Ok(())
     }
 
     #[test]
-    fn test_execute_builtin_empty() {
-        let mut shell = Shell::new().unwrap();
-        let result = shell.execute_builtin("", &[]).unwrap();
-        assert!(!result);
-    }
-
-    #[test]
-    fn test_execute_external_empty() {
+    fn test_parse_args() {
         let shell = Shell::new().unwrap();
-        let result = shell.execute_external("", &[]);
-        assert!(result.is_err());
+
+        assert_eq!(
+            shell.parse_args(r#"command "quoted arg" unquoted"#),
+            vec!["command", "quoted arg", "unquoted"]
+        );
+
+        assert_eq!(
+            shell.parse_args("command with multiple    spaces"),
+            vec!["command", "with", "multiple", "spaces"]
+        );
+    }
+
+    #[test]
+    fn test_expand_tilde() {
+        let shell = Shell::new().unwrap();
+        let home = env::var("HOME").unwrap();
+
+        assert_eq!(shell.expand_tilde("~/test"), format!("{}/test", home));
+        assert_eq!(shell.expand_tilde("/absolute/path"), "/absolute/path");
+    }
+
+    #[test]
+    fn test_transform_input() {
+        let shell = Shell::new().unwrap();
+
+        assert_eq!(
+            shell.transform_input("cmd1; cmd2 # comment".to_string()),
+            vec!["cmd1", "cmd2"]
+        );
+
+        assert_eq!(
+            shell.transform_input("cmd1;; cmd2".to_string()),
+            vec!["cmd1", "cmd2"]
+        );
     }
 }

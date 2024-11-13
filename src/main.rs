@@ -4,6 +4,7 @@ mod builtin;
 mod command;
 mod commands;
 mod completer;
+mod config;
 mod external;
 mod flags;
 mod git;

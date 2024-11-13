@@ -15,6 +15,7 @@ pub trait Command {
     ) -> Result<(), Box<dyn Error>>;
     fn name(&self) -> &'static str;
     fn description(&self) -> &'static str;
+    // TODO
     fn extended_description(&self) -> &'static str {
         self.description()
     }
