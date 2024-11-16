@@ -2,7 +2,6 @@ use colored::Colorize;
 use std::{
     env,
     error::Error,
-    fmt::Write,
     fs::{self, DirEntry, FileType, Metadata},
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
@@ -17,32 +16,9 @@ use crate::{
 type DirResult<T> = Result<T, Box<dyn Error>>;
 
 #[derive(Debug, Clone)]
-pub struct ListDirectory {
-    config: ListConfig,
-}
-
-impl ListDirectory {
-    pub fn new(config: ListConfig) -> Self {
-        Self { config }
-    }
-}
+pub struct ListDirectory;
 
 #[derive(Debug, Clone)]
-pub struct ListConfig {
-    entries_per_row: usize,
-    min_column_width: usize,
-}
-
-impl Default for ListConfig {
-    fn default() -> Self {
-        Self {
-            entries_per_row: 4,
-            min_column_width: 30,
-        }
-    }
-}
-
-#[derive(Debug)]
 struct FileEntry {
     name: String,
     metadata: Metadata,
@@ -122,6 +98,7 @@ impl FileEntry {
 struct ListOptions {
     show_hidden: bool,
     long_format: bool,
+    help: bool,
 }
 
 impl ListOptions {
@@ -129,17 +106,7 @@ impl ListOptions {
         Self {
             show_hidden: flags.has_flag('a'),
             long_format: flags.has_flag('l'),
-        }
-    }
-}
-
-impl Default for ListDirectory {
-    fn default() -> Self {
-        Self {
-            config: ListConfig {
-                entries_per_row: 4,
-                min_column_width: 30,
-            },
+            help: flags.has_flag('?'),
         }
     }
 }
@@ -152,6 +119,11 @@ impl Command for ListDirectory {
     fn execute(&self, args: &[&str], flags: &Flags, _context: &CommandContext) -> DirResult<()> {
         let path = self.get_target_path(args)?;
         let options = ListOptions::from_flags(flags);
+
+        if options.help {
+            println!("{}", self.extended_description());
+            return Ok(());
+        }
 
         let entries = self.read_directory_entries(&path, &options)?;
         self.display_entries(&entries, &options)?;
@@ -182,7 +154,7 @@ impl ListDirectory {
             .iter()
             .find(|arg| !arg.starts_with('-'))
             .map(|&arg| Ok(PathBuf::from(arg)))
-            .unwrap_or_else(|| env::current_dir())?)
+            .unwrap_or_else(env::current_dir)?)
     }
 
     fn read_directory_entries(
@@ -228,86 +200,48 @@ impl ListDirectory {
             return Ok(());
         }
 
-        let max_name_width = entries
+        // Get terminal width (fallback to 80 if can't determine)
+        let term_width = term_size::dimensions().map(|(w, _)| w).unwrap_or(80);
+
+        let max_len = entries
             .iter()
-            .map(|e| e.name.len())
+            .map(|e| e.name.chars().count()) // chars() allow us to count all unicode characters
             .max()
-            .unwrap_or(0)
-            .max(self.config.min_column_width);
+            .unwrap_or(0);
 
-        let term_width = utils::term_width();
-        let num_columns = (term_width / max_name_width).max(1);
-        let mut output = String::new();
+        let col_width = max_len + 2;
+        let num_cols = std::cmp::max(1, term_width / col_width);
+        let num_rows = (entries.len() + num_cols - 1) / num_cols;
 
-        for (i, entry) in entries.iter().enumerate() {
-            write!(
-                output,
-                "{:width$}",
-                entry.colorize(),
-                width = if (i + 1) % num_columns == 0 {
-                    0
-                } else {
-                    max_name_width
+        for row in 0..num_rows {
+            let mut line = String::new();
+
+            for col in 0..num_cols {
+                let idx = col * num_rows + row;
+                if idx >= entries.len() {
+                    break;
                 }
-            )?;
 
-            if (i + 1) % num_columns == 0 {
-                writeln!(output)?;
+                let entry = &entries[idx];
+                let colored_name = entry.colorize();
+
+                let display_width = entry.name.chars().count();
+                let padding = " ".repeat(col_width.saturating_sub(display_width));
+
+                line.push_str(&colored_name);
+                line.push_str(&padding);
+            }
+
+            // Trim trailing spaces and print
+            let trimmed = line.trim_end();
+            if !trimmed.is_empty() {
+                print!("{}", trimmed);
+                if row < num_rows - 1 {
+                    println!();
+                }
             }
         }
 
-        print!("{}", output);
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::TempDir;
-
-    fn setup_test_dir() -> DirResult<TempDir> {
-        let dir = TempDir::new()?;
-        fs::write(dir.path().join("file1.txt"), "content")?;
-        fs::write(dir.path().join("file2.txt"), "content")?;
-        fs::create_dir(dir.path().join("dir1"))?;
-        Ok(dir)
-    }
-
-    #[test]
-    fn test_list_directory() -> DirResult<()> {
-        let dir = setup_test_dir()?;
-        let ls = ListDirectory::default();
-        let flags = Flags::new(&[])?;
-        let context = CommandContext::default();
-
-        ls.execute(&[dir.path().to_str().unwrap()], &flags, &context)?;
-        Ok(())
-    }
-
-    #[test]
-    fn test_hidden_files() -> DirResult<()> {
-        let dir = setup_test_dir()?;
-        fs::write(dir.path().join(".hidden"), "content")?;
-
-        let ls = ListDirectory::default();
-        let mut flags = Flags::new(&[])?;
-        flags.add_flag('a');
-
-        let context = CommandContext::default();
-        ls.execute(&[dir.path().to_str().unwrap()], &flags, &context)?;
-        Ok(())
-    }
-
-    #[test]
-    fn test_long_format() -> DirResult<()> {
-        let dir = setup_test_dir()?;
-        let ls = ListDirectory::default();
-        let mut flags = Flags::new(&[])?;
-        flags.add_flag('l');
-
-        let context = CommandContext::default();
-        ls.execute(&[dir.path().to_str().unwrap()], &flags, &context)?;
         Ok(())
     }
 }

@@ -1,7 +1,7 @@
 use rustyline::history::FileHistory;
 
 use crate::commands::{
-    ChangeDirectory, Echo, History, ListConfig, ListDirectory, PrintWorkingDirectory, TypeCommand,
+    ChangeDirectory, Echo, History, ListDirectory, PrintWorkingDirectory, TypeCommand,
 };
 use std::{collections::HashMap, error::Error, path::PathBuf};
 
@@ -20,7 +20,7 @@ impl CommandRegistry {
         let commands: Vec<Box<dyn Command>> = vec![
             Box::new(Echo),
             Box::new(ChangeDirectory),
-            Box::new(ListDirectory::new(ListConfig::default())),
+            Box::new(ListDirectory),
             Box::new(PrintWorkingDirectory),
             Box::new(History),
             Box::new(TypeCommand),
