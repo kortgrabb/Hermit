@@ -1,4 +1,5 @@
 use colored::Colorize;
+use core::num;
 use std::{
     env,
     error::Error,
@@ -203,15 +204,25 @@ impl ListDirectory {
         // Get terminal width (fallback to 80 if can't determine)
         let term_width = term_size::dimensions().map(|(w, _)| w).unwrap_or(80);
 
+        // Calculate max length of visible characters by using the original name
         let max_len = entries
             .iter()
-            .map(|e| e.name.chars().count()) // chars() allow us to count all unicode characters
+            .map(|e| e.name.chars().count()) // Using original name, not colorized
             .max()
             .unwrap_or(0);
 
         let col_width = max_len + 2;
         let num_cols = std::cmp::max(1, term_width / col_width);
         let num_rows = (entries.len() + num_cols - 1) / num_cols;
+
+        // dont worry about aligninf for other rows
+        if num_rows == 1 {
+            for entry in entries {
+                let colored_name = entry.colorize();
+                println!("{:width$}", colored_name, width = col_width);
+            }
+            return Ok(());
+        }
 
         for row in 0..num_rows {
             let mut line = String::new();
@@ -224,22 +235,17 @@ impl ListDirectory {
 
                 let entry = &entries[idx];
                 let colored_name = entry.colorize();
-
-                let display_width = entry.name.chars().count();
-                let padding = " ".repeat(col_width.saturating_sub(display_width));
-
                 line.push_str(&colored_name);
-                line.push_str(&padding);
-            }
 
-            // Trim trailing spaces and print
-            let trimmed = line.trim_end();
-            if !trimmed.is_empty() {
-                print!("{}", trimmed);
-                if row < num_rows - 1 {
-                    println!();
+                // Only add padding if this isn't the last column
+                if col < num_cols - 1 && idx + num_rows < entries.len() {
+                    let display_width = entry.name.chars().count(); // Using original name length for padding
+                    let padding = " ".repeat(col_width.saturating_sub(display_width));
+                    line.push_str(&padding);
                 }
             }
+
+            println!("{}", line);
         }
 
         Ok(())
